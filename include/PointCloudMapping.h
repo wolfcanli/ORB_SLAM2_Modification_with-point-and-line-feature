@@ -26,7 +26,7 @@
 
 #include <condition_variable>
 #include <chrono>
-
+#include <list>
 
 #include <opencv2/highgui/highgui.hpp>
 #include <eigen3/Eigen/Core>
@@ -70,42 +70,31 @@ public:
     void SavePcdFile(const std::string& filename);
 
 protected:
-    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr generatePointCloud(cv::Mat& color, cv::Mat& depth);
-    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr generatePointCloud(cv::Mat& color, cv::Mat& depth, cv::Mat& pose);
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr GeneratePointCloud(cv::Mat& color, cv::Mat& depth);
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr GeneratePointCloud(cv::Mat& color, cv::Mat& depth, cv::Mat& pose);
+    void GeneratePointCloud2(cv::Mat& color, cv::Mat& depth, cv::Mat& pose);
 
-    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr global_map_;
-    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr segmentation_map_;
-    shared_ptr<thread> viewerThread;
-    
-    bool shutDownFlag = false;
-    mutex shutDownMutex;
+    std::mutex shutDownMutex;
+    bool shutDownFlag;
 
-    condition_variable keyFrameUpdated;
-    mutex keyFrameUpdateMutex;
-    
-    // data to generate point clouds
-    vector<KeyFrame*> keyframes;
-    vector<cv::Mat> colorImgs, depthImgs;
-    cv::Mat   depthImg,colorImg,mpose;
+    std::mutex keyframe_mutex_;
+    std::mutex keyframe_update_mutex_;
+    condition_variable keyframe_update_condi_var_;
+    std::list<KeyFrame*> keyframes_;
+    std::list<cv::Mat> color_imgs_, depth_imgs_;
+    KeyFrame* kf_;
+    cv::Mat color_img_, depth_img_;
 
+    std::mutex point_cloud_mutex_;
     vector<pcl::PointCloud<pcl::PointXYZRGBA>::Ptr> mvPointClouds;
     vector<pcl::PointCloud<pcl::PointXYZRGBA>::Ptr> mvPointCloudsForMatch;
-    vector<cv::Mat> mvPosePointClouds;
-    unsigned long int mpointcloudID=0;
-    
-    mutex keyframeMutex;
-    uint16_t lastKeyframeSize =0;
-    
-    double resolution;
-    pcl::VoxelGrid<pcl::PointXYZRGBA> voxel;
-    pcl::VoxelGrid<pcl::PointXYZRGBA> voxelForMatch;
+
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr global_map_;
+
     float cx = 0;
     float cy = 0;
     float fx = 0;
     float fy = 0;
-
-    void computeTranForTwoPiontCloud(pcl::PointCloud<pcl::PointXYZRGBA> ::Ptr &P1,
-                                     pcl::PointCloud<pcl::PointXYZRGBA> ::Ptr &P2, Eigen::Isometry3d&  T );
 
 };
 }

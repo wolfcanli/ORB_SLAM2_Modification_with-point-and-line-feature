@@ -20,19 +20,9 @@
 #include "PointCloudMapping.h"
  
 namespace ORB_SLAM2 {
-PointCloudMapping::PointCloudMapping() {
-    this->resolution = 0.005;
-    voxel.setLeafSize(resolution, resolution, resolution);
-    voxelForMatch.setLeafSize(0.1f, 0.1f, 0.1f);
+PointCloudMapping::PointCloudMapping(): shutDownFlag(false) {
     global_map_ = boost::make_shared<pcl::PointCloud<pcl::PointXYZRGBA>>();
 
-    lastKeyframeSize = 0;
-}
-
-void PointCloudMapping::Reset() {
-      mvPosePointClouds.clear();
-      mvPointClouds.clear();
-      mpointcloudID=0;
 }
 
 void PointCloudMapping::shutdown() {
@@ -43,11 +33,11 @@ void PointCloudMapping::shutdown() {
 }
 
 void PointCloudMapping::insertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& depth) {
-    unique_lock<mutex> lck(keyframeMutex);
-    cv::Mat T =kf->GetPose();
-    mvPosePointClouds.push_back(T.clone());
-    colorImgs.push_back( color.clone() );
-    depthImgs.push_back( depth.clone() );
+    unique_lock<mutex> lck(keyframe_mutex_);
+
+    keyframes_.emplace_back(kf);
+    color_imgs_.emplace_back(color.clone());
+    depth_imgs_.emplace_back(depth.clone());
 
     if(cx == 0 || cy == 0 || fx == 0 || fy == 0) {
         cx = kf->cx;
@@ -55,11 +45,12 @@ void PointCloudMapping::insertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& de
         fx = kf->fx;
         fy = kf->fy;
     }
-    keyFrameUpdated.notify_one();
-    cout<<"receive a keyframe, id = "<<kf->mnId<<endl;
+    keyframe_update_condi_var_.notify_one();
+    std::cout << "color_imgs size = " << color_imgs_.size() << std::endl;
+    std::cout <<"receive a keyframe, id = "<< kf->mnId << std::endl;
 }
 
-pcl::PointCloud<pcl::PointXYZRGBA>::Ptr PointCloudMapping::generatePointCloud(cv::Mat& color, cv::Mat& depth, cv::Mat& pose) {
+pcl::PointCloud<pcl::PointXYZRGBA>::Ptr PointCloudMapping::GeneratePointCloud(cv::Mat& color, cv::Mat& depth, cv::Mat& pose) {
     pcl::PointCloud<pcl::PointXYZRGBA>::Ptr tmp(new pcl::PointCloud<pcl::PointXYZRGBA>());
 
     for ( int m=0; m<depth.rows; m+=3 ) {
@@ -84,251 +75,100 @@ pcl::PointCloud<pcl::PointXYZRGBA>::Ptr PointCloudMapping::generatePointCloud(cv
     pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud1(new pcl::PointCloud<pcl::PointXYZRGBA>());
     pcl::transformPointCloud(*tmp, *cloud1, T.inverse().matrix());
 
+    pcl::VoxelGrid<pcl::PointXYZRGBA> voxel;
+    voxel.setLeafSize(0.01f, 0.01f, 0.01f);
     voxel.setInputCloud(cloud1);
     voxel.filter(*tmp);
     cloud1->is_dense = true;
 
-    return cloud1;
+    return tmp;
 }
 
-
-pcl::PointCloud<pcl::PointXYZRGBA>::Ptr PointCloudMapping::generatePointCloud( cv::Mat& color, cv::Mat& depth) {
+void PointCloudMapping::GeneratePointCloud2(cv::Mat& color, cv::Mat& depth, cv::Mat& pose) {
     std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
-    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr tmp(new pcl::PointCloud<pcl::PointXYZRGBA>());
-    
-    for ( int m=0; m<depth.rows; m+=3 ) {
-        for ( int n=0; n<depth.cols; n+=3 ) {
-            float d = depth.ptr<float>(m)[n];
-            if (d < 0.01 || d>10)
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr current(new pcl::PointCloud<pcl::PointXYZRGBA>());
+    for(size_t v = 1; v < color.rows ; v+=3){  // 取每3*3的像素块的中心点
+        for(size_t u = 1; u < color.cols ; u+=3){
+            float d = depth.ptr<float>(v)[u];
+            if(d <0.01 || d>10){ // 深度值为0 表示测量失败
                 continue;
+            }
+
             pcl::PointXYZRGBA p;
             p.z = d;
-            p.x = ( n - cx) * p.z / fx;
-            p.y = ( m -cy) * p.z / fy;  
-            
-            p.b = color.ptr<uchar>(m)[n*3];
-            p.g = color.ptr<uchar>(m)[n*3+1];
-            p.r = color.ptr<uchar>(m)[n*3+2];
-                
-            tmp->points.push_back(p);
+            p.x = ( u - cx) * p.z / fx;
+            p.y = ( v - cy) * p.z / fy;
+
+            p.b = color.ptr<uchar>(v)[u*3];
+            p.g = color.ptr<uchar>(v)[u*3+1];
+            p.r = color.ptr<uchar>(v)[u*3+2];
+
+            current->points.push_back(p);
         }
     }
-    // rotation the pointcloud and stiching 
-    Eigen::Isometry3d T = Eigen::Isometry3d::Identity() ;
-    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud1(new pcl::PointCloud<pcl::PointXYZRGBA>());
-    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud2(new pcl::PointCloud<pcl::PointXYZRGBA>());
-    pcl::transformPointCloud(*tmp, *cloud1, T.inverse().matrix());
-    pcl::transformPointCloud(*tmp, *cloud2, T.inverse().matrix()); //专用于点云匹配
 
-    cloud1->is_dense = false;
-    voxel.setInputCloud(cloud1);
-    voxel.filter(*tmp);
-    cloud1->swap(*tmp);
+    Eigen::Isometry3d T = Converter::toSE3Quat( pose );
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr tmp(new pcl::PointCloud<pcl::PointXYZRGBA>());
+    // tmp为转换到世界坐标系下的点云
+    pcl::transformPointCloud(*current, *tmp, T.inverse().matrix());
 
-    cloud2->is_dense = false;
-    voxelForMatch.setInputCloud(cloud2);
-    voxelForMatch.filter(*tmp);
-    cloud2->swap(*tmp);
-
-    mvPointClouds.push_back(cloud1);
-    mvPointCloudsForMatch.push_back(cloud2);
-    mpointcloudID++;
-    cout<<"generate point cloud from  kf-ID:"<<mpointcloudID<<", size="<<cloud1->points.size() << std::endl;
+    pcl::VoxelGrid<pcl::PointXYZRGBA> voxel;
+    voxel.setLeafSize( 0.01, 0.01, 0.01);
+    voxel.setInputCloud(tmp);
+    voxel.filter(*current);
+    current->is_dense = true;
+    *global_map_ += *current;
 
     std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
-    std::chrono::duration<double> time_used = std::chrono::duration_cast<std::chrono::duration<double>>( t2-t1 );
-    std::cout<<"   cost time: " << time_used.count() * 1000 << " ms ." << std::endl;
-
-    return cloud1;
+    double t = std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
+    std::cout << ", Cost = " << t << std::endl;
 }
 
 void PointCloudMapping::Run() {
-    pcl::visualization::CloudViewer viewer("Run");
-
-    while(1) {
-        {
-            unique_lock<mutex> lck_shutdown( shutDownMutex );
-            if (shutDownFlag) {
-                break;
-            }
-        }
-        {
-            unique_lock<mutex> lck_keyframeUpdated( keyFrameUpdateMutex );
-            keyFrameUpdated.wait( lck_keyframeUpdated );
-        }
-
-        // keyframe is updated
-        size_t N=0,i=0;
-        {
-            unique_lock<mutex> lck( keyframeMutex );
-            N =mvPosePointClouds.size();
-        }
-        for(i=lastKeyframeSize; i<N ; i++) {
-            cv::Mat pose = keyframes[i]->GetPose();
-            pcl::PointCloud<pcl::PointXYZRGBA>::Ptr p = generatePointCloud(colorImgs[i], depthImgs[i], pose);
-            *global_map_ += *p;
-        }
-        lastKeyframeSize = i;
-        viewer.showCloud(global_map_);
-        cout << "show global map, size=" << global_map_->points.size() << endl;
-    }
-
-}
-
-
-void PointCloudMapping::RunNoSegmentation() {
-    pcl::visualization::CloudViewer viewer("RunNoSegmentation");
-
-    while(1) {
-        {
-            unique_lock<mutex> lck_shutdown( shutDownMutex );
-            if (shutDownFlag) {
-                break;
-            }
-        }
-        {
-            unique_lock<mutex> lck_keyframeUpdated( keyFrameUpdateMutex );
-            keyFrameUpdated.wait( lck_keyframeUpdated );
-        }
-        
-        // keyframe is updated
-        size_t N=0,i=0;
-        {
-            unique_lock<mutex> lck( keyframeMutex );
-            N =mvPosePointClouds.size();
-        }
-        for(i=lastKeyframeSize; i<N ; i++) {
-            //PointCloud::Ptr p = generatePointCloud( keyframes[i], colorImgs[i], depthImgs[i] );
-            //*global_map_ += *p;
-            if((mvPosePointClouds.size() != colorImgs.size()) ||
-               (mvPosePointClouds.size()!= depthImgs.size()) ||
-               (depthImgs.size() != colorImgs.size())) {
-                cout<<" depthImgs.size != colorImgs.size()  "<<endl;
-                continue;
-            }
-            cout<<"i: "<<i<<"  mvPosePointClouds.size(): "<<mvPosePointClouds.size()<<endl;
-
-            pcl::PointCloud<pcl::PointXYZRGBA>::Ptr tem_cloud1(new pcl::PointCloud<pcl::PointXYZRGBA>());
-            pcl::PointCloud<pcl::PointXYZRGBA>::Ptr tem_cloud2(new pcl::PointCloud<pcl::PointXYZRGBA>());
-            tem_cloud1 = generatePointCloud(colorImgs[i], depthImgs[i]);
-            
-            Eigen::Isometry3d T_c2w =ORB_SLAM2::Converter::toSE3Quat( mvPosePointClouds[i]);
-            
-            Eigen::Isometry3d T_cw= Eigen::Isometry3d::Identity();
-            if(mvPointClouds.size() > 1) {
-                Eigen::Isometry3d T_c1w =ORB_SLAM2::Converter::toSE3Quat( mvPosePointClouds[i-1]);
-                Eigen::Isometry3d T_c1c2 = T_c1w*T_c2w.inverse();// T_c1_c2
-
-                pcl::PointCloud<pcl::PointXYZRGBA>::Ptr tem_match_cloud1 =mvPointCloudsForMatch[i-1];
-                pcl::PointCloud<pcl::PointXYZRGBA>::Ptr tem_match_cloud2 =mvPointCloudsForMatch[i];
-
-                // 计算cloud1 cloud2 之间的相对旋转变换
-                //pcl::transformPointCloud( *tem_match_cloud2, *cloud, T_c1c2.matrix());
-                computeTranForTwoPiontCloud(tem_match_cloud1, tem_match_cloud2, T_c1c2);
-                    
-                T_cw = T_c1c2 * T_c1w;
-            }
- 
- 		pcl::transformPointCloud( *tem_cloud1, *tem_cloud2, T_c2w.inverse().matrix());
- 		//pcl::transformPointCloud( *tem_cloud1, *tem_cloud2,T_cw.inverse().matrix());
-		
- 		*global_map_ += *tem_cloud2;
-	}
-	lastKeyframeSize = i;
-	viewer.showCloud(global_map_);
-    cout << "show global map, size=" << global_map_->points.size() << endl;
-	}
-
-}
-
-void PointCloudMapping::computeTranForTwoPiontCloud(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &P1,
-                                                    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &P2,
-                                                    Eigen::Isometry3d& T) {
-    Eigen::Matrix<float, 4, 4> Tcw;
-    Eigen::Matrix<double, 3, 3> R;
-    Eigen::Matrix<double, 3, 1> t; 
-
-    //计算曲面法线和曲率
-    pcl::PointCloud<pcl::PointNormal>::Ptr points_with_normals_src (new pcl::PointCloud<pcl::PointNormal>());
-    pcl::PointCloud<pcl::PointNormal>::Ptr points_with_normals_tgt (new pcl::PointCloud<pcl::PointNormal>());
-    pcl::NormalEstimation<pcl::PointXYZRGBA, pcl::PointNormal> norm_est;
-    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ> ());
-    //norm_est.setSearchMethod (tree);
-    norm_est.setKSearch (30);
-    norm_est.setInputCloud (P1);
-    norm_est.compute (*points_with_normals_src);
-    pcl::copyPointCloud (*P1, *points_with_normals_src);
-    norm_est.setInputCloud (P2);
-    norm_est.compute (*points_with_normals_tgt);
-    pcl::copyPointCloud (*P2, *points_with_normals_tgt);
-//     
-//     //举例说明我们自定义点的表示（以上定义）
-//     MyPointRepresentation point_representation;
-//     //调整'curvature'尺寸权重以便使它和x, y, z平衡
-//     float alpha[4] = {1.0, 1.0, 1.0, 1.0};
-//     point_representation.setRescaleValues (alpha);
-//     //
-    // 配准
-    pcl::IterativeClosestPointNonLinear<pcl::PointNormal, pcl::PointNormal> reg;
-    reg.setTransformationEpsilon (1e-6);
-    //将两个对应关系之间的(src<->tgt)最大距离设置为10厘米
-    //注意：根据你的数据集大小来调整
-    reg.setMaxCorrespondenceDistance (0.1);  
-    //     //设置点表示
-    //    // reg.setPointRepresentation (boost::make_shared<const MyPointRepresentation> (point_representation));
-    reg.setInputCloud (points_with_normals_src);
-    reg.setInputTarget (points_with_normals_tgt);
-
-    //     //在一个循环中运行相同的最优化并且使结果可视化
-    //     Eigen::Matrix4f Ti = Eigen::Matrix4f::Identity (), prev, targetToSource;
-    pcl::PointCloud<pcl::PointNormal>::Ptr reg_result = points_with_normals_src;
-    reg.setMaximumIterations (2);
-    reg.align (*reg_result);
-
-    Tcw = reg.getFinalTransformation();
-    R(0,0)=Tcw(0,0);R(0,1)=Tcw(0,1);R(0,2)=Tcw(0,2);
-    R(1,0)=Tcw(1,0);  R(1,1)=Tcw(1,1);  R(1,2)=Tcw(1,2);
-    R(2,0)=Tcw(2,0);  R(2,1)=Tcw(2,1);  R(2,2)=Tcw(2,2);
-
-    t(0,0)=Tcw(0,3);t(1,0)=Tcw(1,3); t(2,0)=Tcw(2,3);
-
-    T.rotate(R);
-    T.pretranslate(t);
-
-}
-
-void PointCloudMapping::RunSegmentation() {
-    Py_Initialize();
-    if (!Py_IsInitialized()) {
-        std::cout << "Python init fail!" << std::endl;
-    }
-//    import_array();
-
-    PyRun_SimpleString("import sys");
-//    PyRun_SimpleString("basepath = os.getcwd()");
-    PyRun_SimpleString("sys.path.append('../deeplabv2')");
-
-    PyObject* pModule = nullptr;
-    PyObject* pArg = nullptr;
-    PyObject* pFunc = nullptr;
-
-    pModule = PyImport_ImportModule("inference");
-
-    pFunc= PyObject_GetAttrString(pModule, "init");   // 这里是要调用的函数名
-    PyObject_CallObject(pFunc, pArg);
-
-    pcl::visualization::CloudViewer viewer("PointCloud Segmentation Viewer");
+    pcl::visualization::CloudViewer viewer("Dense pointcloud viewer");
 
     while(true) {
+        {
+            std::unique_lock<std::mutex> locker(keyframe_mutex_);
+            while(keyframes_.empty() && !shutDownFlag){
+                // 阻塞当前线程，直到insertKeyFrame中的notify_one()唤醒
+                // 阻塞条件，keyframes_中没有存储的kf同时线程没有被shut down
+                keyframe_update_condi_var_.wait(locker);
+            }
 
+            if (!(depth_imgs_.size() == color_imgs_.size() && keyframes_.size() == color_imgs_.size())) {
+                continue;
+            }
+
+            if (shutDownFlag && color_imgs_.empty() && depth_imgs_.empty() && keyframes_.empty()) {
+                break;
+            }
+
+            kf_ = keyframes_.front();
+            color_img_ = color_imgs_.front();
+            depth_img_ = depth_imgs_.front();
+            keyframes_.pop_front();
+            color_imgs_.pop_front();
+            depth_imgs_.pop_front();
+        }
+
+        {
+            std::unique_lock<std::mutex> locker(point_cloud_mutex_);
+            cv::Mat pose = kf_->GetPose();
+//            GeneratePointCloud2(color_img_, depth_img_, pose);
+            pcl::PointCloud<pcl::PointXYZRGBA>::Ptr p = GeneratePointCloud(color_img_, depth_img_, pose);
+            *global_map_ += *p;
+
+            viewer.showCloud(global_map_);
+        }
+
+        std::cout << "show point cloud, size=" << global_map_->points.size() << std::endl;
     }
-
-
 }
 
 
 void PointCloudMapping::getGlobalCloudMap(pcl::PointCloud<pcl::PointXYZRGBA> ::Ptr &outputMap) {
-	   unique_lock<mutex> lck_keyframeUpdated( keyFrameUpdateMutex );   
+	   unique_lock<mutex> lck_keyframeUpdated(keyframe_mutex_);
 	   outputMap= global_map_;
 }
 
