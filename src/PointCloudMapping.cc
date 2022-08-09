@@ -20,19 +20,19 @@
 #include "PointCloudMapping.h"
  
 namespace ORB_SLAM2 {
-PointCloudMapping::PointCloudMapping(): shutDownFlag(false) {
+PointCloudMapping::PointCloudMapping(): finish_flag_(false) {
     global_map_ = boost::make_shared<pcl::PointCloud<pcl::PointXYZRGBA>>();
 
 }
 
-void PointCloudMapping::shutdown() {
+void PointCloudMapping::RequestFinish() {
     {
-        std::unique_lock<mutex> lck(shutDownMutex);
-        shutDownFlag = true;
+        std::unique_lock<mutex> lck(finish_mutex_);
+        finish_flag_ = true;
     }
 }
 
-void PointCloudMapping::insertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& depth) {
+void PointCloudMapping::InsertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& depth) {
     unique_lock<mutex> lck(keyframe_mutex_);
 
     keyframes_.emplace_back(kf);
@@ -130,7 +130,7 @@ void PointCloudMapping::Run() {
     while(true) {
         {
             std::unique_lock<std::mutex> locker(keyframe_mutex_);
-            while(keyframes_.empty() && !shutDownFlag){
+            while(keyframes_.empty() && !finish_flag_){
                 // 阻塞当前线程，直到insertKeyFrame中的notify_one()唤醒
                 // 阻塞条件，keyframes_中没有存储的kf同时线程没有被shut down
                 keyframe_update_condi_var_.wait(locker);
@@ -140,7 +140,7 @@ void PointCloudMapping::Run() {
                 continue;
             }
 
-            if (shutDownFlag && color_imgs_.empty() && depth_imgs_.empty() && keyframes_.empty()) {
+            if (finish_flag_ && color_imgs_.empty() && depth_imgs_.empty() && keyframes_.empty()) {
                 break;
             }
 
@@ -167,7 +167,7 @@ void PointCloudMapping::Run() {
 }
 
 
-void PointCloudMapping::getGlobalCloudMap(pcl::PointCloud<pcl::PointXYZRGBA> ::Ptr &outputMap) {
+void PointCloudMapping::GetGlobalCloudMap(pcl::PointCloud<pcl::PointXYZRGBA> ::Ptr &outputMap) {
 	   unique_lock<mutex> lck_keyframeUpdated(keyframe_mutex_);
 	   outputMap= global_map_;
 }

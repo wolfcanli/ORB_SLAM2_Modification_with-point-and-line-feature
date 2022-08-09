@@ -53,7 +53,6 @@
 #include <Python.h>
 #include <numpy/arrayobject.h>
 
-
 namespace ORB_SLAM2 {
 class PointCloudMapping {
 public:
@@ -63,9 +62,10 @@ public:
     void RunNoSegmentation();
     void RunSegmentation();
 
-    void insertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& depth);
-    void shutdown();
-    void getGlobalCloudMap(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &outputMap);
+    void InsertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& depth);
+    void RequestFinish();
+
+    void GetGlobalCloudMap(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &outputMap);
     void Reset();
     void SavePcdFile(const std::string& filename);
 
@@ -74,11 +74,10 @@ protected:
     pcl::PointCloud<pcl::PointXYZRGBA>::Ptr GeneratePointCloud(cv::Mat& color, cv::Mat& depth, cv::Mat& pose);
     void GeneratePointCloud2(cv::Mat& color, cv::Mat& depth, cv::Mat& pose);
 
-    std::mutex shutDownMutex;
-    bool shutDownFlag;
+    std::mutex finish_mutex_;
+    bool finish_flag_;
 
     std::mutex keyframe_mutex_;
-    std::mutex keyframe_update_mutex_;
     condition_variable keyframe_update_condi_var_;
     std::list<KeyFrame*> keyframes_;
     std::list<cv::Mat> color_imgs_, depth_imgs_;
@@ -86,8 +85,6 @@ protected:
     cv::Mat color_img_, depth_img_;
 
     std::mutex point_cloud_mutex_;
-    vector<pcl::PointCloud<pcl::PointXYZRGBA>::Ptr> mvPointClouds;
-    vector<pcl::PointCloud<pcl::PointXYZRGBA>::Ptr> mvPointCloudsForMatch;
 
     pcl::PointCloud<pcl::PointXYZRGBA>::Ptr global_map_;
 
@@ -95,7 +92,6 @@ protected:
     float cy = 0;
     float fx = 0;
     float fy = 0;
-
 };
 }
 #endif // POINTCLOUDMAPPING_H

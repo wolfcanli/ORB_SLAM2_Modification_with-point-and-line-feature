@@ -91,8 +91,8 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     mptLocalMapping = new thread(&ORB_SLAM2::LocalMapping::Run,mpLocalMapper);
 
     //Initialize the Loop Closing thread and launch
-    //mpLoopCloser = new LoopClosing(mpMap, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR);
-   // mptLoopClosing = new thread(&ORB_SLAM2::LoopClosing::RunNoSegmentation, mpLoopCloser);
+    mpLoopCloser = new LoopClosing(mpMap, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR);
+    mptLoopClosing = new thread(&ORB_SLAM2::LoopClosing::Run, mpLoopCloser);
 
     //Initialize the Point Cloud Mapping thread and launch
     mpPointCloudMapping = new PointCloudMapping();
@@ -308,7 +308,8 @@ void System::Reset()
 void System::Shutdown()
 {
     mpLocalMapper->RequestFinish();
-    //mpLoopCloser->RequestFinish();
+    mpLoopCloser->RequestFinish();
+    mpPointCloudMapping->RequestFinish();
     if(mpViewer)
     {
         mpViewer->RequestFinish();
@@ -325,7 +326,7 @@ void System::Shutdown()
     if(mpViewer)
         pangolin::BindToContext("ORB-SLAM2: Map Viewer");
     
-    mpPointCloudMapping->shutdown();
+
 }
 
 void System::SaveTrajectoryTUM(const string &filename)

@@ -1,5 +1,5 @@
 %YAML:1.0
 
-DatasetDir: /home/jiajieshi/JiajieShi-Dir/1-Dataset/TUM/rgbd_dataset_freiburg2_desk
-SettingDir: ./TUM2.yaml
+DatasetDir: /home/jiajieshi/JiajieShi-Dir/1-Dataset/TUM/rgbd_dataset_freiburg1_room
+SettingDir: ./TUM1.yaml
 

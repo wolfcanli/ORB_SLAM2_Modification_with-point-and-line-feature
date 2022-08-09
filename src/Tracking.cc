@@ -1144,8 +1144,8 @@ void Tracking::CreateNewKeyFrame()
     mpLocalMapper->InsertKeyFrame(pKF);
 
     mpLocalMapper->SetNotStop(false);
-    
-    mpPointCloudMapping->insertKeyFrame( pKF, this->mImRGB, this->mImDepth ); 
+
+    mpPointCloudMapping->InsertKeyFrame(pKF, this->mImRGB, this->mImDepth);
     
     mnLastKeyFrameId = mCurrentFrame.mnId;
     mpLastKeyFrame = pKF;
@@ -1600,7 +1600,7 @@ void Tracking::InformOnlyTracking(const bool &flag)
 
 void Tracking::getPointCloudMap(pcl::PointCloud<pcl::PointXYZRGBA> ::Ptr &outputMap)
 {
-	mpPointCloudMapping->getGlobalCloudMap(outputMap);
+    mpPointCloudMapping->GetGlobalCloudMap(outputMap);
 	
 }
 } //namespace ORB_SLAM
