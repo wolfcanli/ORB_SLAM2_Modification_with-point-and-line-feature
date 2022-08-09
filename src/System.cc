@@ -92,10 +92,12 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 
     //Initialize the Loop Closing thread and launch
     //mpLoopCloser = new LoopClosing(mpMap, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR);
-   // mptLoopClosing = new thread(&ORB_SLAM2::LoopClosing::Run, mpLoopCloser);
+   // mptLoopClosing = new thread(&ORB_SLAM2::LoopClosing::RunNoSegmentation, mpLoopCloser);
 
     //Initialize the Point Cloud Mapping thread and launch
     mpPointCloudMapping = new PointCloudMapping();
+//    mptPointCloudMapping = new thread(&ORB_SLAM2::PointCloudMapping::RunSegmentation, mpPointCloudMapping);
+//    mptPointCloudMapping = new thread(&ORB_SLAM2::PointCloudMapping::RunNoSegmentation, mpPointCloudMapping);
     mptPointCloudMapping = new thread(&ORB_SLAM2::PointCloudMapping::Run, mpPointCloudMapping);
 
     //Initialize the Viewer thread and launch
@@ -150,7 +152,7 @@ cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const
         }
     }
 
-    // Check reset
+    // Check Reset
     {
     unique_lock<mutex> lock(mMutexReset);
     if(mbReset)
@@ -201,7 +203,7 @@ cv::Mat System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const doub
         }
     }
 
-    // Check reset
+    // Check Reset
     {
     unique_lock<mutex> lock(mMutexReset);
     if(mbReset)
@@ -252,7 +254,7 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp)
         }
     }
 
-    // Check reset
+    // Check Reset
     {
     unique_lock<mutex> lock(mMutexReset);
     if(mbReset)

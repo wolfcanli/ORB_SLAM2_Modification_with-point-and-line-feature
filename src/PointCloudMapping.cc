@@ -24,12 +24,12 @@ PointCloudMapping::PointCloudMapping() {
     this->resolution = 0.005;
     voxel.setLeafSize(resolution, resolution, resolution);
     voxelForMatch.setLeafSize(0.1f, 0.1f, 0.1f);
-    globalMap = boost::make_shared<pcl::PointCloud<pcl::PointXYZRGBA>>();
+    global_map_ = boost::make_shared<pcl::PointCloud<pcl::PointXYZRGBA>>();
 
     lastKeyframeSize = 0;
 }
 
-void PointCloudMapping::reset() {
+void PointCloudMapping::Reset() {
       mvPosePointClouds.clear();
       mvPointClouds.clear();
       mpointcloudID=0;
@@ -58,6 +58,39 @@ void PointCloudMapping::insertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& de
     keyFrameUpdated.notify_one();
     cout<<"receive a keyframe, id = "<<kf->mnId<<endl;
 }
+
+pcl::PointCloud<pcl::PointXYZRGBA>::Ptr PointCloudMapping::generatePointCloud(cv::Mat& color, cv::Mat& depth, cv::Mat& pose) {
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr tmp(new pcl::PointCloud<pcl::PointXYZRGBA>());
+
+    for ( int m=0; m<depth.rows; m+=3 ) {
+        for ( int n=0; n<depth.cols; n+=3 ) {
+            float d = depth.ptr<float>(m)[n];
+            if (d < 0.01 || d>10)
+                continue;
+            pcl::PointXYZRGBA p;
+            p.z = d;
+            p.x = ( n - cx) * p.z / fx;
+            p.y = ( m -cy) * p.z / fy;
+
+            p.b = color.ptr<uchar>(m)[n*3];
+            p.g = color.ptr<uchar>(m)[n*3+1];
+            p.r = color.ptr<uchar>(m)[n*3+2];
+
+            tmp->points.push_back(p);
+        }
+    }
+
+    Eigen::Isometry3d T = Converter::toSE3Quat(pose);
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud1(new pcl::PointCloud<pcl::PointXYZRGBA>());
+    pcl::transformPointCloud(*tmp, *cloud1, T.inverse().matrix());
+
+    voxel.setInputCloud(cloud1);
+    voxel.filter(*tmp);
+    cloud1->is_dense = true;
+
+    return cloud1;
+}
+
 
 pcl::PointCloud<pcl::PointXYZRGBA>::Ptr PointCloudMapping::generatePointCloud( cv::Mat& color, cv::Mat& depth) {
     std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
@@ -123,6 +156,40 @@ void PointCloudMapping::Run() {
             unique_lock<mutex> lck_keyframeUpdated( keyFrameUpdateMutex );
             keyFrameUpdated.wait( lck_keyframeUpdated );
         }
+
+        // keyframe is updated
+        size_t N=0,i=0;
+        {
+            unique_lock<mutex> lck( keyframeMutex );
+            N =mvPosePointClouds.size();
+        }
+        for(i=lastKeyframeSize; i<N ; i++) {
+            cv::Mat pose = keyframes[i]->GetPose();
+            pcl::PointCloud<pcl::PointXYZRGBA>::Ptr p = generatePointCloud(colorImgs[i], depthImgs[i], pose);
+            *global_map_ += *p;
+        }
+        lastKeyframeSize = i;
+        viewer.showCloud(global_map_);
+        cout << "show global map, size=" << global_map_->points.size() << endl;
+    }
+
+}
+
+
+void PointCloudMapping::RunNoSegmentation() {
+    pcl::visualization::CloudViewer viewer("RunNoSegmentation");
+
+    while(1) {
+        {
+            unique_lock<mutex> lck_shutdown( shutDownMutex );
+            if (shutDownFlag) {
+                break;
+            }
+        }
+        {
+            unique_lock<mutex> lck_keyframeUpdated( keyFrameUpdateMutex );
+            keyFrameUpdated.wait( lck_keyframeUpdated );
+        }
         
         // keyframe is updated
         size_t N=0,i=0;
@@ -132,7 +199,7 @@ void PointCloudMapping::Run() {
         }
         for(i=lastKeyframeSize; i<N ; i++) {
             //PointCloud::Ptr p = generatePointCloud( keyframes[i], colorImgs[i], depthImgs[i] );
-            //*globalMap += *p;
+            //*global_map_ += *p;
             if((mvPosePointClouds.size() != colorImgs.size()) ||
                (mvPosePointClouds.size()!= depthImgs.size()) ||
                (depthImgs.size() != colorImgs.size())) {
@@ -165,12 +232,13 @@ void PointCloudMapping::Run() {
  		pcl::transformPointCloud( *tem_cloud1, *tem_cloud2, T_c2w.inverse().matrix());
  		//pcl::transformPointCloud( *tem_cloud1, *tem_cloud2,T_cw.inverse().matrix());
 		
- 		*globalMap += *tem_cloud2;
+ 		*global_map_ += *tem_cloud2;
 	}
 	lastKeyframeSize = i;
-	viewer.showCloud(globalMap);
-    cout<<"show global map, size="<<globalMap->points.size()<<endl;
+	viewer.showCloud(global_map_);
+    cout << "show global map, size=" << global_map_->points.size() << endl;
 	}
+
 }
 
 void PointCloudMapping::computeTranForTwoPiontCloud(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &P1,
@@ -229,13 +297,43 @@ void PointCloudMapping::computeTranForTwoPiontCloud(pcl::PointCloud<pcl::PointXY
 
 }
 
+void PointCloudMapping::RunSegmentation() {
+    Py_Initialize();
+    if (!Py_IsInitialized()) {
+        std::cout << "Python init fail!" << std::endl;
+    }
+//    import_array();
+
+    PyRun_SimpleString("import sys");
+//    PyRun_SimpleString("basepath = os.getcwd()");
+    PyRun_SimpleString("sys.path.append('../deeplabv2')");
+
+    PyObject* pModule = nullptr;
+    PyObject* pArg = nullptr;
+    PyObject* pFunc = nullptr;
+
+    pModule = PyImport_ImportModule("inference");
+
+    pFunc= PyObject_GetAttrString(pModule, "init");   // 这里是要调用的函数名
+    PyObject_CallObject(pFunc, pArg);
+
+    pcl::visualization::CloudViewer viewer("PointCloud Segmentation Viewer");
+
+    while(true) {
+
+    }
+
+
+}
+
+
 void PointCloudMapping::getGlobalCloudMap(pcl::PointCloud<pcl::PointXYZRGBA> ::Ptr &outputMap) {
 	   unique_lock<mutex> lck_keyframeUpdated( keyFrameUpdateMutex );   
-	   outputMap= globalMap;
+	   outputMap= global_map_;
 }
 
 void PointCloudMapping::SavePcdFile(const std::string &filename) {
-    pcl::io::savePCDFile(filename, *globalMap);
+    pcl::io::savePCDFile(filename, *global_map_);
 }
 
 } // namespace ORB_SLAM2

@@ -27,6 +27,7 @@
 #include <condition_variable>
 #include <chrono>
 
+
 #include <opencv2/highgui/highgui.hpp>
 #include <eigen3/Eigen/Core>
 #include <eigen3/Eigen/Geometry>
@@ -49,23 +50,31 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/voxel_grid.h>
 
+#include <Python.h>
+#include <numpy/arrayobject.h>
+
 
 namespace ORB_SLAM2 {
 class PointCloudMapping {
 public:
     PointCloudMapping();
 
+    void Run();
+    void RunNoSegmentation();
+    void RunSegmentation();
+
     void insertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& depth);
     void shutdown();
-    void Run();
     void getGlobalCloudMap(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &outputMap);
-    void reset();
+    void Reset();
     void SavePcdFile(const std::string& filename);
 
 protected:
     pcl::PointCloud<pcl::PointXYZRGBA>::Ptr generatePointCloud(cv::Mat& color, cv::Mat& depth);
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr generatePointCloud(cv::Mat& color, cv::Mat& depth, cv::Mat& pose);
 
-    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr globalMap;
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr global_map_;
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr segmentation_map_;
     shared_ptr<thread> viewerThread;
     
     bool shutDownFlag = false;

@@ -155,7 +155,7 @@ private:
     // a pose graph optimization and full bundle adjustment (in a new thread) afterwards.
     LoopClosing* mpLoopCloser;
 
-    // The Run draws the map and the current camera pose. It uses Pangolin.
+    // The RunNoSegmentation draws the map and the current camera pose. It uses Pangolin.
     Viewer* mpViewer;
 
     FrameDrawer* mpFrameDrawer;
