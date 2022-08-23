@@ -50,13 +50,14 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/voxel_grid.h>
 
-#include <Python.h>
-#include <numpy/arrayobject.h>
+#include <python3.8/Python.h>
+//#include <numpy/arrayobject.h>
 
 namespace ORB_SLAM2 {
 class PointCloudMapping {
 public:
     PointCloudMapping();
+    ~PointCloudMapping();
 
     void Run();
     void RunNoSegmentation();
@@ -74,19 +75,25 @@ protected:
     pcl::PointCloud<pcl::PointXYZRGBA>::Ptr GeneratePointCloud(cv::Mat& color, cv::Mat& depth, cv::Mat& pose);
     void GeneratePointCloud2(cv::Mat& color, cv::Mat& depth, cv::Mat& pose);
 
-    std::mutex finish_mutex_;
-    bool finish_flag_;
-
-    std::mutex keyframe_mutex_;
-    condition_variable keyframe_update_condi_var_;
     std::list<KeyFrame*> keyframes_;
     std::list<cv::Mat> color_imgs_, depth_imgs_;
-    KeyFrame* kf_;
-    cv::Mat color_img_, depth_img_;
+    std::list<KeyFrame*> keyframes_seg_;
+    std::list<cv::Mat> color_imgs_seg_, depth_imgs_seg_;
 
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr global_map_; // 普通点云
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr seg_map_; // 分割点云
+
+    std::mutex keyframe_mutex_;
+    std::mutex finish_mutex_;
     std::mutex point_cloud_mutex_;
+    std::mutex seg_mutex_;
 
-    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr global_map_;
+    condition_variable keyframe_update_condi_var_;
+    condition_variable seg_update_condi_var_;
+
+    std::shared_ptr<std::thread> point_cloud_thread_;
+
+    bool finish_flag_;
 
     float cx = 0;
     float cy = 0;

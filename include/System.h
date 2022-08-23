@@ -167,7 +167,6 @@ private:
     std::thread* mptLocalMapping;
     std::thread* mptLoopClosing;
     std::thread* mptViewer;
-    std::thread* mptPointCloudMapping;
 
     // Reset flag
     std::mutex mMutexReset;
@@ -183,7 +182,6 @@ private:
     std::vector<MapPoint*> mTrackedMapPoints;
     std::vector<cv::KeyPoint> mTrackedKeyPointsUn;
     std::mutex mMutexState;
-
 };
 
 }// namespace ORB_SLAM

@@ -96,9 +96,6 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 
     //Initialize the Point Cloud Mapping thread and launch
     mpPointCloudMapping = new PointCloudMapping();
-//    mptPointCloudMapping = new thread(&ORB_SLAM2::PointCloudMapping::RunSegmentation, mpPointCloudMapping);
-//    mptPointCloudMapping = new thread(&ORB_SLAM2::PointCloudMapping::RunNoSegmentation, mpPointCloudMapping);
-    mptPointCloudMapping = new thread(&ORB_SLAM2::PointCloudMapping::Run, mpPointCloudMapping);
 
     //Initialize the Viewer thread and launch
     if(bUseViewer)
