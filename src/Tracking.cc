@@ -1075,6 +1075,7 @@ void Tracking::CreateNewKeyFrame()
         return;
 
     KeyFrame* pKF = new KeyFrame(mCurrentFrame,mpMap,mpKeyFrameDB);
+    id_kf++;
 
     mpReferenceKF = pKF;
     mCurrentFrame.mpReferenceKF = pKF;
@@ -1145,7 +1146,8 @@ void Tracking::CreateNewKeyFrame()
 
     mpLocalMapper->SetNotStop(false);
 
-    mpPointCloudMapping->InsertKeyFrame(pKF, this->mImRGB, this->mImDepth);
+    std::vector<KeyFrame*> all_kfs = mpMap->GetAllKeyFrames();
+    mpPointCloudMapping->InsertKeyFrame(pKF, this->mImRGB, this->mImDepth, id_kf, all_kfs);
     
     mnLastKeyFrameId = mCurrentFrame.mnId;
     mpLastKeyFrame = pKF;
@@ -1598,9 +1600,4 @@ void Tracking::InformOnlyTracking(const bool &flag)
     mbOnlyTracking = flag;
 }
 
-void Tracking::getPointCloudMap(pcl::PointCloud<pcl::PointXYZRGBA> ::Ptr &outputMap)
-{
-    mpPointCloudMapping->GetGlobalCloudMap(outputMap);
-	
-}
 } //namespace ORB_SLAM

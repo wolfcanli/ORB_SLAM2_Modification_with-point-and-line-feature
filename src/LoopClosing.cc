@@ -53,6 +53,10 @@ void LoopClosing::SetLocalMapper(LocalMapping *pLocalMapper)
     mpLocalMapper=pLocalMapper;
 }
 
+void LoopClosing::SetPointCloudMapping(ORB_SLAM2::PointCloudMapping *pPointCloudMapping) {
+    mpPointCloudMapping = pPointCloudMapping;
+}
+
 
 void LoopClosing::Run()
 {
@@ -645,7 +649,7 @@ void LoopClosing::ResetIfRequested()
 void LoopClosing::RunGlobalBundleAdjustment(unsigned long nLoopKF)
 {
     cout << "Starting Global Bundle Adjustment" << endl;
-
+    mpPointCloudMapping->loop_closing_busy_ = true;
     int idx =  mnFullBAIdx;
     Optimizer::GlobalBundleAdjustemnt(mpMap,10,&mbStopGBA,nLoopKF,false);
 
@@ -739,6 +743,11 @@ void LoopClosing::RunGlobalBundleAdjustment(unsigned long nLoopKF)
             mpMap->InformNewBigChange();
 
             mpLocalMapper->Release();
+            loop_count++;
+            while(loop_count != mpPointCloudMapping->loop_count_) {
+                mpPointCloudMapping->UpdateCloud();
+            }
+            std::cout << "Point cloud mapping loop count = " << mpPointCloudMapping->loop_count_ << std::endl;
 
             cout << "Map updated!" << endl;
         }

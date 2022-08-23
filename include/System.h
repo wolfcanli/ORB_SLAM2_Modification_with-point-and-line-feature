@@ -126,9 +126,6 @@ public:
     std::vector<MapPoint*> GetTrackedMapPoints();
     std::vector<cv::KeyPoint> GetTrackedKeyPointsUn();
 
-    // 获取点云点图
-     void getPointCloudMap(pcl::PointCloud<pcl::PointXYZRGBA> ::Ptr &outputMap);
-	
 private:
 
     // Input sensor

@@ -111,6 +111,7 @@ public:
 
     // Input sensor
     int mSensor;
+    int id_kf = 0;
 
     // Current Frame
     Frame mCurrentFrame;
@@ -138,8 +139,6 @@ public:
 
     void Reset();
 
-    
-    void getPointCloudMap(pcl::PointCloud<pcl::PointXYZRGBA> ::Ptr &outputMap);
 protected:
 
     // Main tracking function. It is independent of the input sensor.

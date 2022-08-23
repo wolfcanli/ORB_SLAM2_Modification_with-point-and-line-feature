@@ -54,6 +54,11 @@
 //#include <numpy/arrayobject.h>
 
 namespace ORB_SLAM2 {
+struct PointCloudStruct {
+    int pc_id_;
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr point_cloud_of_keyframe_;
+};
+
 class PointCloudMapping {
 public:
     PointCloudMapping();
@@ -63,17 +68,28 @@ public:
     void RunNoSegmentation();
     void RunSegmentation();
 
-    void InsertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& depth);
+    void InsertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& depth,
+                        int kf_id, std::vector<KeyFrame*> all_kfs);
+    void UpdateCloud();
+
     void RequestFinish();
 
-    void GetGlobalCloudMap(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &outputMap);
     void Reset();
     void SavePcdFile(const std::string& filename);
 
-protected:
+public:
     pcl::PointCloud<pcl::PointXYZRGBA>::Ptr GeneratePointCloud(cv::Mat& color, cv::Mat& depth);
     pcl::PointCloud<pcl::PointXYZRGBA>::Ptr GeneratePointCloud(cv::Mat& color, cv::Mat& depth, cv::Mat& pose);
     void GeneratePointCloud2(cv::Mat& color, cv::Mat& depth, cv::Mat& pose);
+
+    bool finish_flag_;
+    bool loop_closing_busy_;
+    bool cloud_busy_;
+
+    int loop_count_ = 0;
+
+    std::vector<KeyFrame*> all_keyframes_in_map_;
+    std::vector<PointCloudStruct> all_point_clouds_;
 
     std::list<KeyFrame*> keyframes_;
     std::list<cv::Mat> color_imgs_, depth_imgs_;
@@ -81,7 +97,7 @@ protected:
     std::list<cv::Mat> color_imgs_seg_, depth_imgs_seg_;
 
     pcl::PointCloud<pcl::PointXYZRGBA>::Ptr global_map_; // 普通点云
-    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr seg_map_; // 分割点云
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr seg_map_; // 分割点云（没有）
 
     std::mutex keyframe_mutex_;
     std::mutex finish_mutex_;
@@ -92,8 +108,6 @@ protected:
     condition_variable seg_update_condi_var_;
 
     std::shared_ptr<std::thread> point_cloud_thread_;
-
-    bool finish_flag_;
 
     float cx = 0;
     float cy = 0;

@@ -26,6 +26,7 @@
 #include "Map.h"
 #include "ORBVocabulary.h"
 #include "Tracking.h"
+#include "PointCloudMapping.h"
 
 #include "KeyFrameDatabase.h"
 
@@ -39,7 +40,7 @@ namespace ORB_SLAM2
 class Tracking;
 class LocalMapping;
 class KeyFrameDatabase;
-
+class PointCloudMapping;
 
 class LoopClosing
 {
@@ -50,12 +51,13 @@ public:
         Eigen::aligned_allocator<std::pair<KeyFrame* const, g2o::Sim3> > > KeyFrameAndPose;
 
 public:
-
     LoopClosing(Map* pMap, KeyFrameDatabase* pDB, ORBVocabulary* pVoc,const bool bFixScale);
 
     void SetTracker(Tracking* pTracker);
 
     void SetLocalMapper(LocalMapping* pLocalMapper);
+
+    void SetPointCloudMapping(PointCloudMapping* pPointCloudMapping);
 
     // Main function
     void Run();
@@ -111,6 +113,8 @@ protected:
     ORBVocabulary* mpORBVocabulary;
 
     LocalMapping *mpLocalMapper;
+    PointCloudMapping* mpPointCloudMapping;
+    int loop_count = 0;
 
     std::list<KeyFrame*> mlpLoopKeyFrameQueue;
 

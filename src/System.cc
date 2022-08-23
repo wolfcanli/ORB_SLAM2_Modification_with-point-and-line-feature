@@ -113,8 +113,8 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     mpLocalMapper->SetTracker(mpTracker);
     mpLocalMapper->SetLoopCloser(mpLoopCloser);
 
-    //mpLoopCloser->SetTracker(mpTracker);
-   //mpLoopCloser->SetLocalMapper(mpLocalMapper);
+    mpLoopCloser->SetTracker(mpTracker);
+    mpLoopCloser->SetLocalMapper(mpLocalMapper);
 }
 
 cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp)
@@ -494,12 +494,6 @@ vector<cv::KeyPoint> System::GetTrackedKeyPointsUn()
 {
     unique_lock<mutex> lock(mMutexState);
     return mTrackedKeyPointsUn;
-}
-
-void System::getPointCloudMap(pcl::PointCloud<pcl::PointXYZRGBA> ::Ptr &outputMap)
-{
-	mpTracker->getPointCloudMap(outputMap);
-	
 }
 
 void System::SavePcdFile(const std::string &filename) {
