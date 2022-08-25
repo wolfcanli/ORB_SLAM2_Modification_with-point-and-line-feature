@@ -114,7 +114,6 @@ protected:
 
     LocalMapping *mpLocalMapper;
     PointCloudMapping* mpPointCloudMapping;
-    int loop_count = 0;
 
     std::list<KeyFrame*> mlpLoopKeyFrameQueue;
 

@@ -54,10 +54,6 @@
 //#include <numpy/arrayobject.h>
 
 namespace ORB_SLAM2 {
-struct PointCloudStruct {
-    int pc_id_;
-    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr point_cloud_of_keyframe_;
-};
 
 class PointCloudMapping {
 public:
@@ -68,9 +64,8 @@ public:
     void RunNoSegmentation();
     void RunSegmentation();
 
-    void InsertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& depth,
-                        int kf_id, std::vector<KeyFrame*> all_kfs);
-    void UpdateCloud();
+    void InsertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& depth);
+    void SetGlobalUpdateFlag();
 
     void RequestFinish();
 
@@ -83,13 +78,12 @@ public:
     void GeneratePointCloud2(cv::Mat& color, cv::Mat& depth, cv::Mat& pose);
 
     bool finish_flag_;
-    bool loop_closing_busy_;
-    bool cloud_busy_;
 
-    int loop_count_ = 0;
+    bool is_loop_;
+    std::mutex loop_mutex_;
 
-    std::vector<KeyFrame*> all_keyframes_in_map_;
-    std::vector<PointCloudStruct> all_point_clouds_;
+    std::vector<KeyFrame*> keyframes_vector_;
+    std::vector<cv::Mat> color_imgs_vector_, depth_imgs_vector_;
 
     std::list<KeyFrame*> keyframes_;
     std::list<cv::Mat> color_imgs_, depth_imgs_;

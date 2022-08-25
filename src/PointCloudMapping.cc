@@ -20,7 +20,7 @@
 #include "PointCloudMapping.h"
  
 namespace ORB_SLAM2 {
-PointCloudMapping::PointCloudMapping(): finish_flag_(false) {
+PointCloudMapping::PointCloudMapping(): finish_flag_(false), is_loop_(false) {
     global_map_ = boost::make_shared<pcl::PointCloud<pcl::PointXYZRGBA>>();
 
     point_cloud_thread_ = std::make_shared<std::thread>(&PointCloudMapping::Run, this);
@@ -37,8 +37,7 @@ void PointCloudMapping::RequestFinish() {
     } // finish_mutex_
 }
 
-void PointCloudMapping::InsertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& depth,
-                                       int kf_id, std::vector<KeyFrame*> all_kfs) {
+void PointCloudMapping::InsertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& depth) {
     unique_lock<mutex> lck(keyframe_mutex_);
 
     keyframes_.emplace_back(kf);
@@ -52,12 +51,9 @@ void PointCloudMapping::InsertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& de
         fy = kf->fy;
     }
 
-    all_keyframes_in_map_ = all_kfs;
-
-    PointCloudStruct pointcloud_kf;
-    pointcloud_kf.pc_id_ = kf_id;
-    pointcloud_kf.point_cloud_of_keyframe_ = GeneratePointCloud(color, depth);
-    all_point_clouds_.emplace_back(pointcloud_kf);
+    keyframes_vector_.emplace_back(kf);
+    color_imgs_vector_.emplace_back(color);
+    depth_imgs_vector_.emplace_back(depth);
 
     keyframe_update_condi_var_.notify_one();
     std::cout << "color_imgs size = " << color_imgs_.size() << std::endl;
@@ -169,82 +165,55 @@ void PointCloudMapping::Run() {
     while(true) {
         KeyFrame* kf_;
         cv::Mat color_img_, depth_img_;
-        {
-            std::unique_lock<std::mutex> locker(keyframe_mutex_);
-            while(keyframes_.empty() && !finish_flag_){
-                // 阻塞当前线程，直到insertKeyFrame中的notify_one()唤醒
-                // 阻塞条件，keyframes_中没有存储的kf同时线程没有被shut down
-                keyframe_update_condi_var_.wait(locker);
+        if (is_loop_) {
+            // 清空地图并重建
+            global_map_->clear();
+            for (int i = 0; i < keyframes_vector_.size(); i++) {
+                cv::Mat pose = keyframes_vector_[i]->GetPose();
+                pcl::PointCloud<pcl::PointXYZRGBA>::Ptr p = GeneratePointCloud(color_imgs_vector_[i], depth_imgs_vector_[i], pose);
+                *global_map_ += *p;
             }
+            is_loop_ = false;
+        } else {
+            {
+                std::unique_lock<std::mutex> locker(keyframe_mutex_);
+                while(keyframes_.empty() && !finish_flag_){
+                    // 阻塞当前线程，直到insertKeyFrame中的notify_one()唤醒
+                    // 阻塞条件，keyframes_中没有存储的kf同时线程没有被shut down
+                    keyframe_update_condi_var_.wait(locker);
+                }
 
-            if (!(depth_imgs_.size() == color_imgs_.size() && keyframes_.size() == color_imgs_.size())) {
-                // 三个list数据对应
-                continue;
-            }
+                if (!(depth_imgs_.size() == color_imgs_.size() && keyframes_.size() == color_imgs_.size())) {
+                    // 三个list数据对应
+                    continue;
+                }
 
-            if (finish_flag_ && color_imgs_.empty() && depth_imgs_.empty() && keyframes_.empty()) {
-                // 接受结束信号，并且list中的图像全都处理完之后结束
-                break;
-            }
+                if (finish_flag_ && color_imgs_.empty() && depth_imgs_.empty() && keyframes_.empty()) {
+                    // 接受结束信号，并且list中的图像全都处理完之后结束
+                    break;
+                }
 
-            kf_ = keyframes_.front();
-            color_img_ = color_imgs_.front();
-            depth_img_ = depth_imgs_.front();
-            keyframes_.pop_front();
-            color_imgs_.pop_front();
-            depth_imgs_.pop_front();
-        } // keyframe_mutex_
+                kf_ = keyframes_.front();
+                color_img_ = color_imgs_.front();
+                depth_img_ = depth_imgs_.front();
+                keyframes_.pop_front();
+                color_imgs_.pop_front();
+                depth_imgs_.pop_front();
+            } // keyframe_mutex_
 
-        {
-            std::unique_lock<std::mutex> locker(point_cloud_mutex_);
-            cv::Mat pose = kf_->GetPose();
+            {
+                std::unique_lock<std::mutex> locker(point_cloud_mutex_);
+                cv::Mat pose = kf_->GetPose();
 //            GeneratePointCloud2(color_img_, depth_img_, pose);
-            pcl::PointCloud<pcl::PointXYZRGBA>::Ptr p = GeneratePointCloud(color_img_, depth_img_, pose);
-            *global_map_ += *p;
+                pcl::PointCloud<pcl::PointXYZRGBA>::Ptr p = GeneratePointCloud(color_img_, depth_img_, pose);
+                *global_map_ += *p;
+            } // point_cloud_mutex_
+        }
 
-            viewer.showCloud(global_map_);
-        } // point_cloud_mutex_
-
+        viewer.showCloud(global_map_);
         std::cout << "show point cloud, size=" << global_map_->points.size() << std::endl;
     }
 }
-
-
-void PointCloudMapping::UpdateCloud() {
-/* 这个函数是在LoopClosing->RunGlobalBundleAdjestment中调用的
- * 全局BA中会优化更新地图点和位姿，之后加入优化点云部分
- * 原来的点云生成程序主要是在tracker->CreateNewKeyFrame之后
- * 用未全局优化的位姿来生成点云，所以难免会有累计误差
- * 而这个函数就是加了在原来全局BA后，优化点云图
- * 优化的方法其实就是遍历所有的关键帧，生成点云，用新的位姿重新拼接起来
- */
-    if (!cloud_busy_) {
-        loop_closing_busy_ = true;
-
-        pcl::PointCloud<pcl::PointXYZRGBA>::Ptr tmp1(new pcl::PointCloud<pcl::PointXYZRGBA>());
-        // 遍历所有关键帧，
-        for (int i = 0; i < all_keyframes_in_map_.size(); i++) {
-            for (int j = 0; j < all_point_clouds_.size(); j++) {
-                if (all_point_clouds_[j].pc_id_ != all_keyframes_in_map_[i]->mnFrameId)
-                    continue;
-                Eigen::Isometry3d T = ORB_SLAM2::Converter::toSE3Quat(all_keyframes_in_map_[i]->GetPose());
-                pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGBA>());
-                pcl::transformPointCloud(*all_point_clouds_[j].point_cloud_of_keyframe_,
-                                         *cloud,
-                                         T.inverse().matrix());
-                *tmp1 += *cloud;
-            }
-        }
-        pcl::PointCloud<pcl::PointXYZRGBA>::Ptr tmp2(new pcl::PointCloud<pcl::PointXYZRGBA>());
-        pcl::VoxelGrid<pcl::PointXYZRGBA> voxel;
-        voxel.setInputCloud(tmp1);
-        voxel.filter(*tmp2);
-        global_map_->swap(*tmp2);
-        loop_closing_busy_ = false;
-        loop_count_++;
-    }
-}
-
 
 void PointCloudMapping::SavePcdFile(const std::string &filename) {
     // 保存点云pcd文件到filename位置
@@ -255,72 +224,72 @@ void PointCloudMapping::SavePcdFile(const std::string &filename) {
  * 下面的代码暂时不用
  *
  */
-    void PointCloudMapping::RunSegmentation() {
-        Py_Initialize();
-        if (!Py_IsInitialized()) {
-            std::cout << "Python fails to initialize!" << std::endl;
-            return;
-        }
+void PointCloudMapping::RunSegmentation() {
+    Py_Initialize();
+    if (!Py_IsInitialized()) {
+        std::cout << "Python fails to initialize!" << std::endl;
+        return;
+    }
 
 //    import_array();
 
-        PyRun_SimpleString("import sys");
-        PyRun_SimpleString("sys.path.append('../deeplabv2')");
+    PyRun_SimpleString("import sys");
+    PyRun_SimpleString("sys.path.append('../deeplabv2')");
 
-        PyObject* pModule = nullptr;
-        PyObject* pArg = nullptr;
-        PyObject* pFunc = nullptr;
+    PyObject* pModule = nullptr;
+    PyObject* pArg = nullptr;
+    PyObject* pFunc = nullptr;
 
-        // 要调用的python文件名
-        pModule = PyImport_ImportModule("inference");
-        // 这里是要调用的函数名
-        pFunc= PyObject_GetAttrString(pModule, "init");
-        PyObject_CallObject(pFunc, pArg);
+    // 要调用的python文件名
+    pModule = PyImport_ImportModule("inference");
+    // 这里是要调用的函数名
+    pFunc= PyObject_GetAttrString(pModule, "init");
+    PyObject_CallObject(pFunc, pArg);
 
-        pcl::visualization::CloudViewer viewer("Pointcloud Segmentation Viewer");
+    pcl::visualization::CloudViewer viewer("Pointcloud Segmentation Viewer");
 
-        while (true) {
-            KeyFrame* kf_seg;
-            cv::Mat color_img_seg, depth_img_seg;
-            {
-                // 从list中获取图像
-                std::unique_lock<std::mutex> locker(seg_mutex_);
+    while (true) {
+        KeyFrame* kf_seg;
+        cv::Mat color_img_seg, depth_img_seg;
+        {
+            // 从list中获取图像
+            std::unique_lock<std::mutex> locker(seg_mutex_);
 
-                while(color_imgs_.empty() && !finish_flag_){  // !mbShutdown为了防止所有关键帧映射点云完成后进入无限等待
-                    seg_update_condi_var_.wait(locker);
-                }
-
-                if (finish_flag_ && color_imgs_seg_.empty() && depth_imgs_seg_.empty() && keyframes_seg_.empty()) {
-                    break;
-                }
-                kf_seg = keyframes_seg_.front();
-                color_img_seg = color_imgs_seg_.front();
-                depth_img_seg = depth_imgs_seg_.front();
-                keyframes_seg_.pop_front();
-                color_imgs_seg_.pop_front();
-                depth_imgs_seg_.pop_front();
-            } // seg_mutex_
-
-            /*
-             * 先将cv::mat数据转换成python的numpy或tensor
-             * 调用python中的运行网络的函数
-             * 把转换后的输入作为参数传递进去
-             *
-             *
-             */
-
-
-            int m, n;
-            n = color_img_seg.cols * 3;
-            m = depth_img_seg.rows;
-            unsigned char *data = (unsigned  char*)malloc(sizeof(unsigned char) * m * n);
-            int p = 0;
-            for (int i = 0; i < m; i++) {
-                for (int j = 0; j < n; j++) {
-                    data[p] = color_img_seg.at<unsigned char>(i, j);
-                    p++;
-                }
+            while(color_imgs_.empty() && !finish_flag_){  // !mbShutdown为了防止所有关键帧映射点云完成后进入无限等待
+                seg_update_condi_var_.wait(locker);
             }
+
+            if (finish_flag_ && color_imgs_seg_.empty() && depth_imgs_seg_.empty() && keyframes_seg_.empty()) {
+                break;
+            }
+            kf_seg = keyframes_seg_.front();
+            color_img_seg = color_imgs_seg_.front();
+            depth_img_seg = depth_imgs_seg_.front();
+            keyframes_seg_.pop_front();
+            color_imgs_seg_.pop_front();
+            depth_imgs_seg_.pop_front();
+        } // seg_mutex_
+
+        /*
+         * 先将cv::mat数据转换成python的numpy或tensor
+         * 调用python中的运行网络的函数
+         * 把转换后的输入作为参数传递进去
+         *
+         *
+         */
+
+
+        int m, n;
+        n = color_img_seg.cols * 3;
+        m = depth_img_seg.rows;
+        unsigned char *data = (unsigned  char*)malloc(sizeof(unsigned char) * m * n);
+        int p = 0;
+        for (int i = 0; i < m; i++) {
+            for (int j = 0; j < n; j++) {
+                data[p] = color_img_seg.at<unsigned char>(i, j);
+                p++;
+            }
+        }
 
 //        npy_intp Dims[2] = { m, n }; //给定维度信息
 //        PyObject* pArray = PyArray_SimpleNewFromData(2, Dims, NPY_UBYTE, data);
@@ -331,8 +300,8 @@ void PointCloudMapping::SavePcdFile(const std::string &filename) {
 //        getProbMap(pModule, pArg, imD, imRGB, pose);
 //
 //        viewer.showCloud(mSegPointCloud);
-        }
     }
+}
 
 
 } // namespace ORB_SLAM2

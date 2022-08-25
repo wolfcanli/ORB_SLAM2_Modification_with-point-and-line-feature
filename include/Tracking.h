@@ -111,7 +111,6 @@ public:
 
     // Input sensor
     int mSensor;
-    int id_kf = 0;
 
     // Current Frame
     Frame mCurrentFrame;

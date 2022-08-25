@@ -1075,7 +1075,6 @@ void Tracking::CreateNewKeyFrame()
         return;
 
     KeyFrame* pKF = new KeyFrame(mCurrentFrame,mpMap,mpKeyFrameDB);
-    id_kf++;
 
     mpReferenceKF = pKF;
     mCurrentFrame.mpReferenceKF = pKF;
@@ -1146,8 +1145,7 @@ void Tracking::CreateNewKeyFrame()
 
     mpLocalMapper->SetNotStop(false);
 
-    std::vector<KeyFrame*> all_kfs = mpMap->GetAllKeyFrames();
-    mpPointCloudMapping->InsertKeyFrame(pKF, this->mImRGB, this->mImDepth, id_kf, all_kfs);
+    mpPointCloudMapping->InsertKeyFrame(pKF, this->mImRGB, this->mImDepth);
     
     mnLastKeyFrameId = mCurrentFrame.mnId;
     mpLastKeyFrame = pKF;
