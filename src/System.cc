@@ -169,6 +169,9 @@ cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const
     return Tcw;
 }
 
+/*
+ * RGBD下的启动入口
+ */
 cv::Mat System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const double &timestamp)
 {
     if(mSensor!=RGBD)
@@ -179,17 +182,19 @@ cv::Mat System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const doub
 
     // Check mode change
     {
+        // 这里判断是否开启定位模式，每一个新的图像进来都会检测一次
         unique_lock<mutex> lock(mMutexMode);
         if(mbActivateLocalizationMode)
         {
             mpLocalMapper->RequestStop();
 
             // Wait until Local Mapping has effectively stopped
+            // 等待局部建图线程关闭
             while(!mpLocalMapper->isStopped())
             {
                 usleep(1000);
             }
-
+            // 如果开启定位模式，tracking中的一部分函数将不会执行
             mpTracker->InformOnlyTracking(true);
             mbActivateLocalizationMode = false;
         }
@@ -202,6 +207,7 @@ cv::Mat System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const doub
     }
 
     // Check Reset
+    // 检查是否有复位请求
     {
     unique_lock<mutex> lock(mMutexReset);
     if(mbReset)
@@ -211,6 +217,7 @@ cv::Mat System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const doub
     }
     }
 
+    // 正式的追踪入口，获得这一帧的估计位姿
     cv::Mat Tcw = mpTracker->GrabImageRGBD(im,depthmap,timestamp);
 
     unique_lock<mutex> lock2(mMutexState);

@@ -1,43 +1,29 @@
-/**
-* This file is part of ORB-SLAM2.
-*
-* Copyright (C) 2014-2016 Raúl Mur-Artal <raulmur at unizar dot es> (University of Zaragoza)
-* For more information see <https://github.com/raulmur/ORB_SLAM2>
-*
-* ORB-SLAM2 is free software: you can redistribute it and/or modify
-* it under the terms of the GNU General Public License as published by
-* the Free Software Foundation, either version 3 of the License, or
-* (at your option) any later version.
-*
-* ORB-SLAM2 is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with ORB-SLAM2. If not, see <http://www.gnu.org/licenses/>.
-*/
+//
+// Created by jiajieshi on 22-9-5.
+//
 
-#ifndef MAPPOINT_H
-#define MAPPOINT_H
+#ifndef ORB_SLAM2_MAPLINE_H
+#define ORB_SLAM2_MAPLINE_H
 
-#include"KeyFrame.h"
-#include"Frame.h"
-#include"Map.h"
+#include "KeyFrame.h"
+#include "Frame.h"
+#include "Map.h"
+#include "ORBmatcher.h"
+#include "LineMatcher.h"
 
 #include<opencv2/core/core.hpp>
+#include <Eigen/Core>
 #include<mutex>
 
-namespace ORB_SLAM2
-{
+typedef Eigen::Matrix<double, 6, 1> Vector6d;
+
+namespace ORB_SLAM2{
 
 class KeyFrame;
 class Map;
 class Frame;
 
-
-class MapPoint
-{
+class MapLine {
 public:
     /**
      * @brief 给定坐标与keyframe构造MapPoint
@@ -47,7 +33,7 @@ public:
      * @param[in] pRefKF    KeyFrame
      * @param[in] pMap      Map
      */
-    MapPoint(const cv::Mat &Pos, KeyFrame* pRefKF, Map* pMap);
+    MapLine(const Vector6d &Pos, KeyFrame* pRefKF, Map* pMap);
     /**
      * @brief 给定坐标与frame构造MapPoint
      * @detials 被双目：UpdateLastFrame()调用
@@ -56,14 +42,14 @@ public:
      * @param[in] pFrame    Frame
      * @param[in] idxF      MapPoint在Frame中的索引，即对应的特征点的编号
      */
-    MapPoint(const cv::Mat &Pos,  Map* pMap, Frame* pFrame, const int &idxF);
+    MapLine(const Vector6d &Pos,  Map* pMap, Frame* pFrame, const int &idxF);
 
     // 设置和获取世界坐标系下的坐标
-    void SetWorldPos(const cv::Mat &Pos);
-    cv::Mat GetWorldPos();
+    void SetWorldPos(const Vector6d &Pos);
+    Vector6d GetWorldPos();
 
     //世界坐标系下地图点被多个相机观测的平均观测方向
-    cv::Mat GetNormal();
+    Eigen::Vector3d GetNormal();
     // 获取生成当前地图点的参考关键帧
     KeyFrame* GetReferenceKeyFrame();
     // 获取观测到该地图点的关键帧序列，size_t表示该地图点在这些关键帧中的索引
@@ -95,9 +81,9 @@ public:
     void SetBadFlag();
     bool isBad();
     // 在形成闭环时，会更新关键帧与地图点的关系,pMP是要代替this的地图点
-    void Replace(MapPoint* pMP);
+    void Replace(MapLine* pML);
     // 获取取代当前地图点的点
-    MapPoint* GetReplaced();
+    MapLine* GetReplaced();
     /**
      * @brief 增加可视次数
      * @detials Visible表示：
@@ -137,6 +123,7 @@ public:
      * @see III - C2.2 c2.4
      */
     void UpdateNormalAndDepth();
+    void UpdateAverageDir();  //这里只更新线段的平均观测方向，ORB中还要更新深度
 
     float GetMinDistanceInvariance();
     float GetMaxDistanceInvariance();
@@ -154,9 +141,14 @@ public:
     int nObs;
 
     // Variables used by the tracking
-    float mTrackProjX;             ///< 当前地图点投影到某帧上后的坐标
-    float mTrackProjY;             ///< 当前地图点投影到某帧上后的坐标
-    float mTrackProjXR;            ///< 当前地图点投影到某帧上后的坐标(右目)
+    float mTrackProjStartX;             ///< 当前地图点投影到某帧上后的坐标
+    float mTrackProjStartY;             ///< 当前地图点投影到某帧上后的坐标
+    float mTrackProjStartXR;            ///< 当前地图点投影到某帧上后的坐标(右目)
+
+    float mTrackProjEndX;             ///< 当前地图点投影到某帧上后的坐标
+    float mTrackProjEndY;             ///< 当前地图点投影到某帧上后的坐标
+    float mTrackProjEndXR;            ///< 当前地图点投影到某帧上后的坐标(右目)
+
     int mnTrackScaleLevel;         ///< 所处的尺度, 由其他的类进行操作 //?
     float mTrackViewCos;           ///< 被追踪到时,那帧相机看到当前地图点的视角
     // TrackLocalMap - SearchByProjection 中决定是否对该点进行投影的变量
@@ -194,41 +186,46 @@ public:
     ///全局BA中对当前点进行操作的时候使用的互斥量
     static std::mutex mGlobalMutex;
 
-protected:    
+public:
+    // 下面空间直线的表示需要修改，用的不是普吕克坐标
+    // Position in absolute coordinates
+    // 由两端点坐标构成的空间直线的表示
+    Vector6d mWorldPos;
+    Eigen::Vector3d mStart3d;
+    Eigen::Vector3d mEnd3d;
 
-     // Position in absolute coordinates
-     cv::Mat mWorldPos;
+    // 观测到该MapLine的关键帧和该MapLine在该关键帧中的索引
+    std::map<KeyFrame*,size_t> mObservations;
 
-     // Keyframes observing the point and associated index in keyframe
-     std::map<KeyFrame*,size_t> mObservations;
+    // Mean viewing direction
+    // 该线段的平均观测方向，相机到地图线中点的向量
+    Eigen::Vector3d mNormalVector;
 
-     // Mean viewing direction
-     cv::Mat mNormalVector;
+    // Best descriptor to fast matching
+    cv::Mat mLineDescriptor;
 
-     // Best descriptor to fast matching
-     cv::Mat mDescriptor;
+    // Reference KeyFrame
+    KeyFrame* mpRefKF;
 
-     // Reference KeyFrame
-     KeyFrame* mpRefKF;
+    // Tracking counters
+    int mnVisible;
+    int mnFound;
 
-     // Tracking counters
-     int mnVisible;
-     int mnFound;
+    // Bad flag (we do not currently erase MapPoint from memory)
+    bool mbBad;
+    MapLine* mpReplaced;
 
-     // Bad flag (we do not currently erase MapPoint from memory)
-     bool mbBad;
-     MapPoint* mpReplaced;
+    // Scale invariance distances
+    float mfMinDistance;
+    float mfMaxDistance;
 
-     // Scale invariance distances
-     float mfMinDistance;
-     float mfMaxDistance;
+    Map* mpMap;
 
-     Map* mpMap;
-
-     std::mutex mMutexPos;
-     std::mutex mMutexFeatures;
+    std::mutex mMutexPos;
+    std::mutex mMutexFeatures;
 };
 
 } //namespace ORB_SLAM
 
-#endif // MAPPOINT_H
+
+#endif //ORB_SLAM2_MAPLINE_H

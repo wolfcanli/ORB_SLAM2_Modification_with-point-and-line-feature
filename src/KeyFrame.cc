@@ -19,29 +19,30 @@
 */
 
 #include "KeyFrame.h"
-#include "Converter.h"
-#include "ORBmatcher.h"
-#include<mutex>
 
-namespace ORB_SLAM2
-{
+
+namespace ORB_SLAM2 {
 
 long unsigned int KeyFrame::nNextId=0;
 
 KeyFrame::KeyFrame(Frame &F, Map *pMap, KeyFrameDatabase *pKFDB):
-    mnFrameId(F.mnId),  mTimeStamp(F.mTimeStamp), mnGridCols(FRAME_GRID_COLS), mnGridRows(FRAME_GRID_ROWS),
-    mfGridElementWidthInv(F.mfGridElementWidthInv), mfGridElementHeightInv(F.mfGridElementHeightInv),
-    mnTrackReferenceForFrame(0), mnFuseTargetForKF(0), mnBALocalForKF(0), mnBAFixedForKF(0),
-    mnLoopQuery(0), mnLoopWords(0), mnRelocQuery(0), mnRelocWords(0), mnBAGlobalForKF(0),
-    fx(F.fx), fy(F.fy), cx(F.cx), cy(F.cy), invfx(F.invfx), invfy(F.invfy),
-    mbf(F.mbf), mb(F.mb), mThDepth(F.mThDepth), N(F.N), mvKeys(F.mvKeys), mvKeysUn(F.mvKeysUn),
-    mvuRight(F.mvuRight), mvDepth(F.mvDepth), mDescriptors(F.mDescriptors.clone()),
-    mBowVec(F.mBowVec), mFeatVec(F.mFeatVec), mnScaleLevels(F.mnScaleLevels), mfScaleFactor(F.mfScaleFactor),
-    mfLogScaleFactor(F.mfLogScaleFactor), mvScaleFactors(F.mvScaleFactors), mvLevelSigma2(F.mvLevelSigma2),
-    mvInvLevelSigma2(F.mvInvLevelSigma2), mnMinX(F.mnMinX), mnMinY(F.mnMinY), mnMaxX(F.mnMaxX),
-    mnMaxY(F.mnMaxY), mK(F.mK), mvpMapPoints(F.mvpMapPoints), mpKeyFrameDB(pKFDB),
-    mpORBvocabulary(F.mpORBvocabulary), mbFirstConnection(true), mpParent(NULL), mbNotErase(false),
-    mbToBeErased(false), mbBad(false), mHalfBaseline(F.mb/2), mpMap(pMap)
+        mnFrameId(F.mnId), mTimeStamp(F.mTimeStamp), mnGridCols(FRAME_GRID_COLS), mnGridRows(FRAME_GRID_ROWS),
+        mfGridElementWidthInv(F.mfGridElementWidthInv), mfGridElementHeightInv(F.mfGridElementHeightInv),
+        mnTrackReferenceForFrame(0), mnFuseTargetForKF(0), mnBALocalForKF(0), mnBAFixedForKF(0),
+        mnLoopQuery(0), mnLoopWords(0), mnRelocQuery(0), mnRelocWords(0), mnBAGlobalForKF(0),
+        fx(F.fx), fy(F.fy), cx(F.cx), cy(F.cy), invfx(F.invfx), invfy(F.invfy),
+        mbf(F.mbf), mb(F.mb), mThDepth(F.mThDepth), N(F.N), NL(F.NL), mvKeys(F.mvKeys), mvKeysUn(F.mvKeysUn),
+        mvKeyLines(F.mvKeyLines), mvKeyLinesUn(F.mvKeyLinesUn),
+        mvuRight(F.mvuRight), mvDepth(F.mvDepth), mDescriptors(F.mDescriptors.clone()),
+        mvuRightLineStart(F.mvuRightLineStart), mvuRightLineEnd(F.mvuRightLineEnd),
+        mvDepthLineStart(F.mvDepthLineStart), mvDepthLineEnd(F.mvDepthLineEnd),
+        mLineDescriptors(F.mLineDescriptors.clone()), mvKeyLineCoefficient(F.mvKeyLineCoefficient),
+        mBowVec(F.mBowVec), mFeatVec(F.mFeatVec), mnScaleLevels(F.mnScaleLevels), mfScaleFactor(F.mfScaleFactor),
+        mfLogScaleFactor(F.mfLogScaleFactor), mvScaleFactors(F.mvScaleFactors), mvLevelSigma2(F.mvLevelSigma2),
+        mvInvLevelSigma2(F.mvInvLevelSigma2), mnMinX(F.mnMinX), mnMinY(F.mnMinY), mnMaxX(F.mnMaxX),
+        mnMaxY(F.mnMaxY), mK(F.mK), mvpMapPoints(F.mvpMapPoints), mvpMapLines(F.mvpMapLines), mpKeyFrameDB(pKFDB),
+        mpORBvocabulary(F.mpORBvocabulary), mbFirstConnection(true), mpParent(NULL), mbNotErase(false),
+        mbToBeErased(false), mbBad(false), mHalfBaseline(F.mb/2), mpMap(pMap)
 {
     mnId=nNextId++;
 
@@ -213,10 +214,20 @@ void KeyFrame::AddMapPoint(MapPoint *pMP, const size_t &idx)
     mvpMapPoints[idx]=pMP;
 }
 
+void KeyFrame::AddMapLine(ORB_SLAM2::MapLine *pML, const size_t &idx) {
+    unique_lock<mutex> lock(mMutexFeatures);
+    mvpMapLines[idx]=pML;
+}
+
 void KeyFrame::EraseMapPointMatch(const size_t &idx)
 {
     unique_lock<mutex> lock(mMutexFeatures);
     mvpMapPoints[idx]=static_cast<MapPoint*>(NULL);
+}
+
+void KeyFrame::EraseMapLineMatch(const size_t &idx) {
+    unique_lock<mutex> lock(mMutexFeatures);
+    mvpMapLines[idx] = static_cast<MapLine*>(NULL);
 }
 
 void KeyFrame::EraseMapPointMatch(MapPoint* pMP)
@@ -226,10 +237,20 @@ void KeyFrame::EraseMapPointMatch(MapPoint* pMP)
         mvpMapPoints[idx]=static_cast<MapPoint*>(NULL);
 }
 
+void KeyFrame::EraseMapLineMatch(ORB_SLAM2::MapLine *pML) {
+    int idx = pML->GetIndexInKeyFrame(this);
+    if(idx>=0)
+        mvpMapLines[idx]=static_cast<MapLine*>(NULL);
+}
+
 
 void KeyFrame::ReplaceMapPointMatch(const size_t &idx, MapPoint* pMP)
 {
     mvpMapPoints[idx]=pMP;
+}
+
+void KeyFrame::ReplaceMapLineMatch(const size_t &idx, ORB_SLAM2::MapLine *pML) {
+    mvpMapLines[idx] = pML;
 }
 
 set<MapPoint*> KeyFrame::GetMapPoints()
@@ -243,6 +264,19 @@ set<MapPoint*> KeyFrame::GetMapPoints()
         MapPoint* pMP = mvpMapPoints[i];
         if(!pMP->isBad())
             s.insert(pMP);
+    }
+    return s;
+}
+
+std::set<MapLine*> KeyFrame::GetMapLines() {
+    unique_lock<mutex> lock(mMutexFeatures);
+    std::set<MapLine*> s;
+    for (size_t i = 0, iend = mvpMapLines.size(); i < iend; i++) {
+        if (!mvpMapLines[i])
+            continue;
+        MapLine* pML = mvpMapLines[i];
+        if (!pML->isBad())
+            s.insert(pML);
     }
     return s;
 }
@@ -274,10 +308,35 @@ int KeyFrame::TrackedMapPoints(const int &minObs)
     return nPoints;
 }
 
+int KeyFrame::TrackedMapLines(const int &minObs) {
+    unique_lock<mutex> lock(mMutexFeatures);
+    int nLines = 0;
+    const bool bCheckObs = minObs > 0;
+    for(int i=0; i<NL; i++) {
+        MapLine* pML = mvpMapLines[i];
+        if(pML) {
+            if(!pML->isBad()) {
+                if(bCheckObs) {
+                    if(pML->Observations()>=minObs)
+                        nLines++;
+                } else
+                    nLines++;
+            }
+        }
+    }
+
+    return nLines;
+}
+
 vector<MapPoint*> KeyFrame::GetMapPointMatches()
 {
     unique_lock<mutex> lock(mMutexFeatures);
     return mvpMapPoints;
+}
+
+std::vector<MapLine*> KeyFrame::GetMapLineMatches() {
+    unique_lock<mutex> lock(mMutexFeatures);
+    return mvpMapLines;
 }
 
 MapPoint* KeyFrame::GetMapPoint(const size_t &idx)
@@ -286,8 +345,22 @@ MapPoint* KeyFrame::GetMapPoint(const size_t &idx)
     return mvpMapPoints[idx];
 }
 
-void KeyFrame::UpdateConnections()
+MapLine* KeyFrame::GetMapLine(const size_t &idx)
 {
+    unique_lock<mutex> lock(mMutexFeatures);
+    return mvpMapLines[idx];
+}
+
+/*
+ * 更新关键帧之间的连接图
+ *
+ * 1. 首先获得该关键帧的所有MapPoint点，统计观测到这些3d点的每个关键帧与其它所有关键帧之间的共视程度
+ *    对每一个找到的关键帧，建立一条边，边的权重是该关键帧与当前关键帧公共3d点的个数。
+ * 2. 并且该权重必须大于一个阈值，如果没有超过该阈值的权重，那么就只保留权重最大的边（与其它关键帧的共视程度比较高）
+ * 3. 对这些连接按照权重从大到小进行排序，以方便将来的处理
+ *    更新完covisibility图之后，如果没有初始化过，则初始化为连接权重最大的边（与其它关键帧共视程度最高的那个关键帧），类似于最大生成树
+ */
+void KeyFrame::UpdateConnections() {
     map<KeyFrame*,int> KFcounter;
 
     vector<MapPoint*> vpMP;
@@ -607,6 +680,8 @@ vector<size_t> KeyFrame::GetFeaturesInArea(const float &x, const float &y, const
     return vIndices;
 }
 
+
+
 bool KeyFrame::IsInImage(const float &x, const float &y) const
 {
     return (x>=mnMinX && x<mnMaxX && y>=mnMinY && y<mnMaxY);
@@ -628,6 +703,38 @@ cv::Mat KeyFrame::UnprojectStereo(int i)
     }
     else
         return cv::Mat();
+}
+
+cv::Mat KeyFrame::UnprojectStereoLineStart(int i) {
+    const float z = mvDepthLineStart[i];
+    if (z > 0) {
+        const float u = mvKeyLines[i].startPointX;
+        const float v = mvKeyLines[i].startPointY;
+        const float x = (u - cx) * z * invfx;
+        const float y = (v - cy) * z * invfy;
+        cv::Mat x3Dc = (cv::Mat_<float>(3,1) << x, y, z);
+
+        unique_lock<mutex> lock(mMutexPose);
+        return Twc.rowRange(0,3).colRange(0,3)*x3Dc+Twc.rowRange(0,3).col(3);
+    } else {
+        return cv::Mat();
+    }
+}
+
+cv::Mat KeyFrame::UnprojectStereoLineEnd(int i) {
+    const float z = mvDepthLineEnd[i];
+    if (z > 0) {
+        const float u = mvKeyLines[i].endPointX;
+        const float v = mvKeyLines[i].endPointY;
+        const float x = (u - cx) * z * invfx;
+        const float y = (v - cy) * z * invfy;
+        cv::Mat x3Dc = (cv::Mat_<float>(3,1) << x, y, z);
+
+        unique_lock<mutex> lock(mMutexPose);
+        return Twc.rowRange(0,3).colRange(0,3)*x3Dc+Twc.rowRange(0,3).col(3);
+    } else {
+        return cv::Mat();
+    }
 }
 
 float KeyFrame::ComputeSceneMedianDepth(const int q)
@@ -661,5 +768,34 @@ float KeyFrame::ComputeSceneMedianDepth(const int q)
 
     return vDepths[(vDepths.size()-1)/q];
 }
+
+// 和其他地方的实现是一样的
+void KeyFrame::lineDescriptorMAD(vector<vector<cv::DMatch>> line_matches, double &nn_mad, double &nn12_mad) const
+{
+    vector<vector<cv::DMatch>> matches_nn, matches_12;
+    matches_nn = line_matches;
+    matches_12 = line_matches;
+
+    // estimate the NN's distance standard deviation
+    double nn_dist_median;
+    sort( matches_nn.begin(), matches_nn.end(), compare_descriptor_by_NN_dist());
+    nn_dist_median = matches_nn[int(matches_nn.size()/2)][0].distance;
+
+    for(unsigned int i=0; i<matches_nn.size(); i++)
+        matches_nn[i][0].distance = fabsf(matches_nn[i][0].distance - nn_dist_median);
+    sort(matches_nn.begin(), matches_nn.end(), compare_descriptor_by_NN_dist());
+    nn_mad = 1.4826 * matches_nn[int(matches_nn.size()/2)][0].distance;
+
+    // estimate the NN's 12 distance standard deviation
+    double nn12_dist_median;
+    sort( matches_12.begin(), matches_12.end(), compare_descriptor_by_NN12_dist());
+    nn12_dist_median = matches_12[int(matches_12.size()/2)][1].distance - matches_12[int(matches_12.size()/2)][0].distance;
+    for (unsigned int j=0; j<matches_12.size(); j++)
+        matches_12[j][0].distance = fabsf( matches_12[j][1].distance - matches_12[j][0].distance - nn12_dist_median);
+    sort(matches_12.begin(), matches_12.end(), compare_descriptor_by_NN_dist());
+    nn12_mad = 1.4826 * matches_12[int(matches_12.size()/2)][0].distance;
+}
+
+
 
 } //namespace ORB_SLAM

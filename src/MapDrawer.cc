@@ -43,9 +43,15 @@ MapDrawer::MapDrawer(Map* pMap, const string &strSettingPath):mpMap(pMap)
 
 void MapDrawer::DrawMapPoints()
 {
+    // 从地图中获取所有的地图点，黑色表示
     const vector<MapPoint*> &vpMPs = mpMap->GetAllMapPoints();
+    // 从地图中获取所有的参考地图点，也就是局部地图点，红色表示
     const vector<MapPoint*> &vpRefMPs = mpMap->GetReferenceMapPoints();
 
+    std::cout << "Keypoint size in current map is " << mpMap->MapPointsInMap() << std::endl;
+
+    //将vpRefMPs从vector容器类型转化为set容器类型，便于使用set::count快速统计
+    //补充, set::count用于返回集合中为某个值的元素的个数
     set<MapPoint*> spRefMPs(vpRefMPs.begin(), vpRefMPs.end());
 
     if(vpMPs.empty())
@@ -53,10 +59,11 @@ void MapDrawer::DrawMapPoints()
 
     glPointSize(mPointSize);
     glBegin(GL_POINTS);
+    // 全部地图点用黑色绘制
     glColor3f(0.0,0.0,0.0);
 
-    for(size_t i=0, iend=vpMPs.size(); i<iend;i++)
-    {
+    for(size_t i=0, iend=vpMPs.size(); i<iend;i++) {
+        // 如果这个地图点是坏点，或者这个地图点是参考地图点，则不绘制
         if(vpMPs[i]->isBad() || spRefMPs.count(vpMPs[i]))
             continue;
         cv::Mat pos = vpMPs[i]->GetWorldPos();
@@ -66,15 +73,58 @@ void MapDrawer::DrawMapPoints()
 
     glPointSize(mPointSize);
     glBegin(GL_POINTS);
-    glColor3f(1.0,0.0,0.0);
+    // 参考地图点，即局部地图点用红色绘制
+    glColor3f(1.0,0.0,0.0); // R G B
 
-    for(set<MapPoint*>::iterator sit=spRefMPs.begin(), send=spRefMPs.end(); sit!=send; sit++)
-    {
+    for(set<MapPoint*>::iterator sit=spRefMPs.begin(), send=spRefMPs.end(); sit!=send; sit++) {
+        // 如果这个地图点是坏点，则不绘制
         if((*sit)->isBad())
             continue;
         cv::Mat pos = (*sit)->GetWorldPos();
         glVertex3f(pos.at<float>(0),pos.at<float>(1),pos.at<float>(2));
+    }
 
+    glEnd();
+}
+
+void MapDrawer::DrawMapLines() {
+    const vector<MapLine*> &vpMLs = mpMap->GetAllMapLines();
+    const vector<MapLine*> &vpRefMLs = mpMap->GetReferenceMapLines();
+
+    std::cout << "Keyline size in current map is " << mpMap->MapLinesInMap() << std::endl;
+
+    set<MapLine*> spRefMLs(vpRefMLs.begin(), vpRefMLs.end());
+
+    if(vpMLs.empty())
+        return;
+
+    glLineWidth(mLineWidth);
+    glBegin(GL_LINES);
+    glColor3f(0.0,0.0,0.0);
+
+    for(size_t i=0, iend=vpMLs.size(); i<iend;i++) {
+        // 如果这个地图点是坏点，或者这个地图点是参考地图点，则不绘制
+        if(vpMLs[i]->isBad() || spRefMLs.count(vpMLs[i]))
+            continue;
+        Vector6d pos = vpMLs[i]->GetWorldPos();
+
+        glVertex3f(pos(0), pos(1), pos(2)); // start point
+        glVertex3f(pos(3), pos(4), pos(5)); // end point
+    }
+    glEnd();
+
+    glLineWidth(mLineWidth);
+    glBegin(GL_LINES);
+    glColor3f(1.0,0.0,0.0);
+
+    for(set<MapLine*>::iterator sit=spRefMLs.begin(), send=spRefMLs.end(); sit!=send; sit++) {
+        // 如果这个地图点是坏点，则不绘制
+        if((*sit)->isBad())
+            continue;
+        Vector6d pos = (*sit)->GetWorldPos();
+
+        glVertex3f(pos(0), pos(1), pos(2)); // start point
+        glVertex3f(pos(3), pos(4), pos(5)); // end point
     }
 
     glEnd();

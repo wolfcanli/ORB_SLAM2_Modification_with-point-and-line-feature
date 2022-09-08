@@ -43,13 +43,18 @@ void Map::AddMapPoint(MapPoint *pMP)
     mspMapPoints.insert(pMP);
 }
 
+void Map::AddMapLine(ORB_SLAM2::MapLine *pML) {
+    unique_lock<mutex> lock(mMutexMap);
+    mspMapLines.insert(pML);
+}
+
 void Map::EraseMapPoint(MapPoint *pMP)
 {
     unique_lock<mutex> lock(mMutexMap);
     mspMapPoints.erase(pMP);
 
     // TODO: This only erase the pointer.
-    // Delete the MapPoint
+//    delete pMP;
 }
 
 void Map::EraseKeyFrame(KeyFrame *pKF)
@@ -58,13 +63,26 @@ void Map::EraseKeyFrame(KeyFrame *pKF)
     mspKeyFrames.erase(pKF);
 
     // TODO: This only erase the pointer.
-    // Delete the MapPoint
+//    delete pKF;
+}
+
+void Map::EraseMapLine(ORB_SLAM2::MapLine *pML) {
+    unique_lock<mutex> lock(mMutexMap);
+    mspMapLines.erase(pML);
+
+    // TODO: This only erase the pointer.
+//    delete pML;
 }
 
 void Map::SetReferenceMapPoints(const vector<MapPoint *> &vpMPs)
 {
     unique_lock<mutex> lock(mMutexMap);
     mvpReferenceMapPoints = vpMPs;
+}
+
+void Map::SetReferenceMapLine(const std::vector<MapLine *> &vpMLs) {
+    unique_lock<mutex> lock(mMutexMap);
+    mvpReferenceMapLines = vpMLs;
 }
 
 void Map::InformNewBigChange()
@@ -91,6 +109,11 @@ vector<MapPoint*> Map::GetAllMapPoints()
     return vector<MapPoint*>(mspMapPoints.begin(),mspMapPoints.end());
 }
 
+std::vector<MapLine*> Map::GetAllMapLines() {
+    unique_lock<mutex> lock(mMutexMap);
+    return std::vector<MapLine*>(mspMapLines.begin(), mspMapLines.end());
+}
+
 long unsigned int Map::MapPointsInMap()
 {
     unique_lock<mutex> lock(mMutexMap);
@@ -103,10 +126,21 @@ long unsigned int Map::KeyFramesInMap()
     return mspKeyFrames.size();
 }
 
+long unsigned int Map::MapLinesInMap() {
+    unique_lock<mutex> lock(mMutexMap);
+    return mspMapLines.size();
+}
+
 vector<MapPoint*> Map::GetReferenceMapPoints()
 {
     unique_lock<mutex> lock(mMutexMap);
     return mvpReferenceMapPoints;
+}
+
+vector<MapLine*> Map::GetReferenceMapLines()
+{
+    unique_lock<mutex> lock(mMutexMap);
+    return mvpReferenceMapLines;
 }
 
 long unsigned int Map::GetMaxKFid()
@@ -123,10 +157,18 @@ void Map::clear()
     for(set<KeyFrame*>::iterator sit=mspKeyFrames.begin(), send=mspKeyFrames.end(); sit!=send; sit++)
         delete *sit;
 
+    for(set<MapLine*>::iterator sit=mspMapLines.begin(), send=mspMapLines.end(); sit!=send; sit++)
+        delete *sit;
+
     mspMapPoints.clear();
     mspKeyFrames.clear();
+    mspMapLines.clear();
+
     mnMaxKFid = 0;
+
     mvpReferenceMapPoints.clear();
+    mvpReferenceMapLines.clear();
+
     mvpKeyFrameOrigins.clear();
 }
 

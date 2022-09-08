@@ -44,6 +44,7 @@ public:
 
     // Main thread function. Draw points, keyframes, the current camera pose and the last processed
     // frame. Drawing is refreshed according to the camera fps. We use Pangolin.
+    // 进程的主函数
     void Run();
 
     void RequestFinish();
@@ -61,14 +62,15 @@ private:
     bool Stop();
 
     System* mpSystem;
-    FrameDrawer* mpFrameDrawer;
-    MapDrawer* mpMapDrawer;
+    FrameDrawer* mpFrameDrawer; // 帧绘制器
+    MapDrawer* mpMapDrawer; // 地图绘制器
     Tracking* mpTracker;
 
     // 1/fps in ms
     double mT;
+    // 图像尺寸
     float mImageWidth, mImageHeight;
-
+    // 显示窗口的查看视角
     float mViewpointX, mViewpointY, mViewpointZ, mViewpointF;
 
     bool CheckFinish();

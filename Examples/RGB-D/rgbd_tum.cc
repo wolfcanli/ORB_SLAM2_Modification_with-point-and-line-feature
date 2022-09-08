@@ -18,7 +18,6 @@
 * along with ORB-SLAM2. If not, see <http://www.gnu.org/licenses/>.
 */
 
-
 #include<iostream>
 #include<algorithm>
 #include<fstream>
@@ -28,6 +27,7 @@
 
 #include<System.h>
 
+
 using namespace std;
 
 void LoadImages(const string &strAssociationFilename, vector<string> &vstrImageFilenamesRGB,
@@ -35,6 +35,7 @@ void LoadImages(const string &strAssociationFilename, vector<string> &vstrImageF
 
 int main(int argc, char **argv)
 {
+
      argv[1] ="../../Vocabulary/ORBvoc.txt";
      argv[2] ="./TUM1.yaml";
      argv[3] ="/home/jiajieshi/JiajieShi-Dir/1-Dataset/TUM/rgbd_dataset_freiburg1_desk";
@@ -71,7 +72,6 @@ int main(int argc, char **argv)
     cout << endl << "-------" << endl;
     cout << "Start processing sequence ..." << endl;
     cout << "Images in the sequence: " << nImages << endl << endl;
-
     
     
 //     vector<string> vsfile_name;

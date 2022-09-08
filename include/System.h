@@ -61,7 +61,7 @@ public:
 
 public:
 
-    // Initialize the SLAM system. It launches the Local Mapping, Loop Closing and Viewer threads.
+    // SLAM系统初始化，启动局部地图、回环检测和可视化线程
     System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor, const bool bUseViewer = true);
 
     // Proccess the given stereo frame. Images must be synchronized and rectified.
@@ -126,7 +126,7 @@ public:
     std::vector<MapPoint*> GetTrackedMapPoints();
     std::vector<cv::KeyPoint> GetTrackedKeyPointsUn();
 
-private:
+public:
 
     // Input sensor
     eSensor mSensor;

@@ -22,6 +22,8 @@
 #define FRAME_H
 
 #include<vector>
+#include <opencv2/opencv.hpp>
+#include <thread>
 
 #include "MapPoint.h"
 #include "Thirdparty/DBoW2/DBoW2/BowVector.h"
@@ -30,7 +32,8 @@
 #include "KeyFrame.h"
 #include "ORBextractor.h"
 
-#include <opencv2/opencv.hpp>
+#include "LineExtractor.h"
+#include "MapLine.h"
 
 namespace ORB_SLAM2
 {
@@ -39,6 +42,7 @@ namespace ORB_SLAM2
 
 class MapPoint;
 class KeyFrame;
+class MapLine;
 
 class Frame
 {
@@ -60,7 +64,15 @@ public:
     // Extract ORB on the image. 0 for left image and 1 for right image.
     void ExtractORB(int flag, const cv::Mat &im);
 
+    void ExtractLine(const cv::Mat& im);
+
     // Compute Bag of Words representation.
+    // 存放在mBowVec中
+    /**
+     * @brief 计算词袋模型
+     * @details 计算词包 mBowVec 和 mFeatVec ，其中 mFeatVec 记录了属于第i个node（在第4层）的ni个描述子
+     * @see CreateInitialMapMonocular() TrackReferenceKeyFrame() Relocalization()
+     */
     void ComputeBoW();
 
     // Set the camera pose.
@@ -82,11 +94,20 @@ public:
     // Check if a MapPoint is in the frustum of the camera
     // and fill variables of the MapPoint to be used by the tracking
     bool isInFrustum(MapPoint* pMP, float viewingCosLimit);
+    // 判断地图线是否能被当前帧观测到，这里是判断两个端点在不在视锥内
+    // TODO 那只有一部分能被观测到怎么算？
+    bool isInFrustum(MapLine* pML, float viewingCosLimit);
 
     // Compute the cell of a keypoint (return false if outside the grid)
     bool PosInGrid(const cv::KeyPoint &kp, int &posX, int &posY);
 
+    // 获取某个点周围一定领域内的特征点索引
     vector<size_t> GetFeaturesInArea(const float &x, const float  &y, const float  &r, const int minLevel=-1, const int maxLevel=-1) const;
+    // 获取某条线周围一定领域内的特征线索引
+    vector<size_t> GetLinesInArea(const float &x_s, const float &y_s,
+                                  const float &x_e, const float &y_e,
+                                  const float &r,
+                                  const int minLevel=-1, const int maxLevel=-1) const;
 
     // Search a match for each keypoint in the left image to a keypoint in the right image.
     // If there is a match, depth is computed and the right coordinate associated to the left keypoint is stored.
@@ -98,6 +119,10 @@ public:
     // Backprojects a keypoint (if stereo/depth info available) into 3D world coordinates.
     cv::Mat UnprojectStereo(const int &i);
 
+    cv::Mat UnprojectStereoLine(const int &i);
+    cv::Mat UnprojectStereoLineStart(const int &i);
+    cv::Mat UnprojectStereoLineEnd(const int &i);
+
 //     void setFrameImage(cv::Mat im);
 public:
     // Vocabulary used for relocalization.
@@ -105,6 +130,9 @@ public:
 
     // Feature extractor. The right is used only in the stereo case.
     ORBextractor* mpORBextractorLeft, *mpORBextractorRight;
+
+    // Line extractor
+    LineExtractor* mpLineExtractor;
 
     // Frame timestamp.
     double mTimeStamp;
@@ -132,6 +160,8 @@ public:
 
     // Number of KeyPoints.
     int N;
+    // Number of KeyLines.
+    int NL;
 
     // Vector of keypoints (original for visualization) and undistorted (actually used by the system).
     // In the stereo case, mvKeysUn is redundant as images must be rectified.
@@ -145,7 +175,11 @@ public:
     std::vector<float> mvDepth;
 
     // Bag of Words Vector structures.
+    // 内部实际存储的是std::map<WordId, WordValue>
+    // WordId 和 WordValue 表示Word在叶子中的id 和权重
     DBoW2::BowVector mBowVec;
+    // 内部实际存储 std::map<NodeId, std::vector<unsigned int> >
+    // NodeId 表示节点id，std::vector<unsigned int> 中实际存的是该节点id下所有特征点在图像中的索引
     DBoW2::FeatureVector mFeatVec;
 
     // ORB descriptor, each row associated to a keypoint.
@@ -156,6 +190,20 @@ public:
 
     // Flag to identify outlier associations.
     std::vector<bool> mvbOutlier;
+
+    // 类似上面的设置，保存线信息
+    std::vector<KeyLine> mvKeyLines;
+    std::vector<KeyLine> mvKeyLinesUn;
+    std::vector<float> mvuRightLineStart; // 特征线起点右目坐标
+    std::vector<float> mvuRightLineEnd; // 特征线终点右目坐标
+    std::vector<float> mvDepthLineStart; // 特征线起点坐标深度
+    std::vector<float> mvDepthLineEnd; // 特征线终点坐标深度
+
+    cv::Mat mLineDescriptors;
+    std::vector<Eigen::Vector3d> mvKeyLineCoefficient; // 特征线直线系数
+    std::vector<MapLine*> mvpMapLines; // 与特征线关联的地图线
+    std::vector<bool> mvbLineOutlier;
+
 
     // Keypoints are assigned to cells in a grid to reduce matching complexity when projecting MapPoints.
     static float mfGridElementWidthInv;
@@ -196,6 +244,8 @@ private:
     // Only for the RGB-D case. Stereo must be already rectified!
     // (called in the constructor).
     void UndistortKeyPoints();
+
+    void UndistortKeyLines();
 
     // Computes image bounds for the undistorted image (called in the constructor).
     void ComputeImageBounds(const cv::Mat &imLeft);

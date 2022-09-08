@@ -32,22 +32,13 @@
 #include <eigen3/Eigen/Core>
 #include <eigen3/Eigen/Geometry>
 
-#include <pcl/io/ply_io.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
-#include <pcl/registration/icp.h>
-#include <pcl/registration/icp_nl.h>
-#include <pcl/registration/transforms.h>
-#include <pcl/features/normal_3d.h>
 
-#include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/visualization/cloud_viewer.h>
-#include <pcl/compression/compression_profiles.h>
-#include <pcl/compression/octree_pointcloud_compression.h>
 #include <pcl/common/transforms.h>
 #include <pcl/filters/filter.h>
-#include <pcl/filters/passthrough.h>
 #include <pcl/filters/voxel_grid.h>
 
 #include <python3.8/Python.h>

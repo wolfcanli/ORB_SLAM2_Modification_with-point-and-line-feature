@@ -68,7 +68,9 @@ src/Sim3Solver.cc
 src/Initializer.cc
 src/Viewer.cc
 src/PointCloudMapping.cc
-)
+src/LineMatcher.cpp
+src/LineExtractor.cpp
+src/MapLine.cpp)
 
 target_link_libraries(${PROJECT_NAME}
 ${OpenCV_LIBS}
@@ -118,3 +120,8 @@ target_link_libraries(rgbd_my ${PROJECT_NAME})
 #Examples/Monocular/mono_euroc.cc)
 #target_link_libraries(mono_euroc ${PROJECT_NAME})
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/Test)
+
+add_executable(line_extractor_test
+        Test/LineExtractorTest.cpp)
+target_link_libraries(line_extractor_test ${PROJECT_NAME})

@@ -38,11 +38,19 @@ public:
 
     Map* mpMap;
 
+    // 绘制地图点和线
     void DrawMapPoints();
+    void DrawMapLines();
+
+    // 绘制关键帧
     void DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph);
+    // 绘制当前相机
     void DrawCurrentCamera(pangolin::OpenGlMatrix &Twc);
+    // 设置当前相机位姿
     void SetCurrentCameraPose(const cv::Mat &Tcw);
+    // 设置参考关键帧
     void SetReferenceKeyFrame(KeyFrame *pKF);
+    // 将当前相机位姿转化成OpenGLMatrix类型
     void GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M);
 
 private:
@@ -55,6 +63,8 @@ private:
     float mCameraLineWidth;
 
     cv::Mat mCameraPose;
+
+    float mLineWidth;
 
     std::mutex mMutexCamera;
 };

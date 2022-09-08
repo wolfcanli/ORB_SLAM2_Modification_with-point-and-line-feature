@@ -176,22 +176,29 @@ MapPoint* MapPoint::GetReplaced()
 
 void MapPoint::Replace(MapPoint* pMP)
 {
+    // 同一个点就不用换了
     if(pMP->mnId==this->mnId)
         return;
 
+    //要替换当前地图点,有两个工作:
+    // 1. 将当前地图点的观测数据等其他数据都"叠加"到新的地图点上
+    // 2. 将观测到当前地图点的关键帧的信息进行更新
+
+    // 清除当前地图点的信息，这一段和SetBadFlag函数相同
     int nvisible, nfound;
     map<KeyFrame*,size_t> obs;
     {
         unique_lock<mutex> lock1(mMutexFeatures);
         unique_lock<mutex> lock2(mMutexPos);
         obs=mObservations;
-        mObservations.clear();
-        mbBad=true;
-        nvisible = mnVisible;
+        mObservations.clear(); //清除当前地图点的原有观测
+        mbBad=true; //当前的地图点被删除了
+        nvisible = mnVisible; //暂存当前地图点的可视次数和被找到的次数
         nfound = mnFound;
-        mpReplaced = pMP;
+        mpReplaced = pMP; //指明当前地图点已经被指定的地图点替换了
     }
-
+    // 所有能观测到原地图点的关键帧都要复制到替换的地图点上
+    // 将观测到当前地图的的关键帧的信息进行更新
     for(map<KeyFrame*,size_t>::iterator mit=obs.begin(), mend=obs.end(); mit!=mend; mit++)
     {
         // Replace measurement in keyframe
@@ -199,18 +206,25 @@ void MapPoint::Replace(MapPoint* pMP)
 
         if(!pMP->IsInKeyFrame(pKF))
         {
-            pKF->ReplaceMapPointMatch(mit->second, pMP);
-            pMP->AddObservation(pKF,mit->second);
+            // 该关键帧中没有对"要替换本地图点的地图点"的观测
+            pKF->ReplaceMapPointMatch(mit->second, pMP); // 让KeyFrame用pMP替换掉原来的MapPoint
+            pMP->AddObservation(pKF,mit->second); // 让MapPoint替换掉对应的KeyFrame
         }
         else
         {
+            // 这个关键帧对当前的地图点和"要替换本地图点的地图点"都具有观测
+            // 产生冲突，即pKF中有两个特征点a,b（这两个特征点的描述子是近似相同的），这两个特征点对应两个 MapPoint 为this,pMP
+            // 然而在fuse的过程中pMP的观测更多，需要替换this，因此保留b与pMP的联系，去掉a与this的联系
+            //说白了,既然是让对方的那个地图点来代替当前的地图点,就是说明对方更好,所以删除这个关键帧对当前帧的观测
             pKF->EraseMapPointMatch(mit->second);
         }
     }
+    // 将当前地图点的观测数据等其他数据都"叠加"到新的地图点上
     pMP->IncreaseFound(nfound);
     pMP->IncreaseVisible(nvisible);
+    //描述子更新
     pMP->ComputeDistinctiveDescriptors();
-
+    //告知地图,删掉我
     mpMap->EraseMapPoint(this);
 }
 
