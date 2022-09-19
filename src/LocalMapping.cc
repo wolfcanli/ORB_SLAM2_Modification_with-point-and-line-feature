@@ -664,6 +664,7 @@ void LocalMapping::CreateNewMapPoints()
     }
 }
 
+// TODO 创建新的地图线
 void LocalMapping::CreateNewMapLines() {
     // Retrieve neighbor keyframes in covisibility graph
     int nn=10;
@@ -1032,68 +1033,68 @@ void LocalMapping::SearchInNeighbors()
     }
 
     // TODO 添加线特征
-    LineMatcher line_matcher;
-
-    // Step 3：将当前帧的地图点分别投影到两级相邻关键帧，寻找匹配点对应的地图点进行融合，称为正向投影融合
-    vector<MapLine*> vpMapLineMatches = mpCurrentKeyFrame->GetMapLineMatches();
-    for(vector<KeyFrame*>::iterator vit=vpTargetKFs.begin(), vend=vpTargetKFs.end(); vit!=vend; vit++)
-    {
-        KeyFrame* pKFi = *vit;
-
-        // 将地图点投影到关键帧中进行匹配和融合；融合策略如下
-        // 1.如果地图点能匹配关键帧的特征点，并且该点有对应的地图点，那么选择观测数目多的替换两个地图点
-        // 2.如果地图点能匹配关键帧的特征点，并且该点没有对应的地图点，那么为该点添加该投影地图点
-        // 注意这个时候对地图点融合的操作是立即生效的
-        line_matcher.Fuse(pKFi, vpMapLineMatches);
-    }
-
-    // Search matches by projection from target KFs in current KF
-    // Step 4：将两级相邻关键帧地图点分别投影到当前关键帧，寻找匹配点对应的地图点进行融合，称为反向投影融合
-    // 用于进行存储要融合的一级邻接和二级邻接关键帧所有MapPoints的集合
-    vector<MapLine*> vpLineFuseCandidates;
-    vpLineFuseCandidates.reserve(vpTargetKFs.size() * vpMapLineMatches.size());
-
-    //  Step 4.1：遍历每一个一级邻接和二级邻接关键帧，收集他们的地图点存储到 vpFuseCandidates
-    for(vector<KeyFrame*>::iterator vitKF=vpTargetKFs.begin(), vendKF=vpTargetKFs.end(); vitKF!=vendKF; vitKF++)
-    {
-        KeyFrame* pKFi = *vitKF;
-        vector<MapLine*> vpMapLinesKFi = pKFi->GetMapLineMatches();
-
-        // 遍历当前一级邻接和二级邻接关键帧中所有的MapPoints,找出需要进行融合的并且加入到集合中
-        for(vector<MapLine*>::iterator vitMP=vpMapLinesKFi.begin(), vendMP=vpMapLinesKFi.end(); vitMP!=vendMP; vitMP++)
-        {
-            MapLine* pML = *vitMP;
-            if(!pML)
-                continue;
-
-            // 如果地图点是坏点，或者已经加进集合vpFuseCandidates，跳过
-            if(pML->isBad() || pML->mnFuseCandidateForKF == mpCurrentKeyFrame->mnId)
-                continue;
-
-            // 加入集合，并标记已经加入
-            pML->mnFuseCandidateForKF = mpCurrentKeyFrame->mnId;
-            vpLineFuseCandidates.push_back(pML);
-        }
-    }
-    // Step 4.2：进行地图点投影融合,和正向融合操作是完全相同的
-    // 不同的是正向操作是"每个关键帧和当前关键帧的地图点进行融合",而这里的是"当前关键帧和所有邻接关键帧的地图点进行融合"
-    line_matcher.Fuse(mpCurrentKeyFrame, vpLineFuseCandidates);
-
-    // Update points
-    // Step 5：更新当前帧地图点的描述子、深度、平均观测方向等属性
-    vpMapLineMatches = mpCurrentKeyFrame->GetMapLineMatches();
-    for(size_t i=0, iend=vpMapLineMatches.size(); i<iend; i++) {
-        MapLine* pML=vpMapLineMatches[i];
-        if(pML) {
-            if(!pML->isBad()) {
-                // 在所有找到pMP的关键帧中，获得最佳的描述子
-                pML->ComputeDistinctiveDescriptors();
-
-                // 更新平均观测方向和观测距离
-                pML->UpdateNormalAndDepth();
-            }
-        }
-    }
+//    LineMatcher line_matcher;
+//
+//    // Step 3：将当前帧的地图点分别投影到两级相邻关键帧，寻找匹配点对应的地图点进行融合，称为正向投影融合
+//    vector<MapLine*> vpMapLineMatches = mpCurrentKeyFrame->GetMapLineMatches();
+//    for(vector<KeyFrame*>::iterator vit=vpTargetKFs.begin(), vend=vpTargetKFs.end(); vit!=vend; vit++)
+//    {
+//        KeyFrame* pKFi = *vit;
+//
+//        // 将地图点投影到关键帧中进行匹配和融合；融合策略如下
+//        // 1.如果地图点能匹配关键帧的特征点，并且该点有对应的地图点，那么选择观测数目多的替换两个地图点
+//        // 2.如果地图点能匹配关键帧的特征点，并且该点没有对应的地图点，那么为该点添加该投影地图点
+//        // 注意这个时候对地图点融合的操作是立即生效的
+//        line_matcher.Fuse(pKFi, vpMapLineMatches);
+//    }
+//
+//    // Search matches by projection from target KFs in current KF
+//    // Step 4：将两级相邻关键帧地图点分别投影到当前关键帧，寻找匹配点对应的地图点进行融合，称为反向投影融合
+//    // 用于进行存储要融合的一级邻接和二级邻接关键帧所有MapPoints的集合
+//    vector<MapLine*> vpLineFuseCandidates;
+//    vpLineFuseCandidates.reserve(vpTargetKFs.size() * vpMapLineMatches.size());
+//
+//    //  Step 4.1：遍历每一个一级邻接和二级邻接关键帧，收集他们的地图点存储到 vpFuseCandidates
+//    for(vector<KeyFrame*>::iterator vitKF=vpTargetKFs.begin(), vendKF=vpTargetKFs.end(); vitKF!=vendKF; vitKF++)
+//    {
+//        KeyFrame* pKFi = *vitKF;
+//        vector<MapLine*> vpMapLinesKFi = pKFi->GetMapLineMatches();
+//
+//        // 遍历当前一级邻接和二级邻接关键帧中所有的MapPoints,找出需要进行融合的并且加入到集合中
+//        for(vector<MapLine*>::iterator vitMP=vpMapLinesKFi.begin(), vendMP=vpMapLinesKFi.end(); vitMP!=vendMP; vitMP++)
+//        {
+//            MapLine* pML = *vitMP;
+//            if(!pML)
+//                continue;
+//
+//            // 如果地图点是坏点，或者已经加进集合vpFuseCandidates，跳过
+//            if(pML->isBad() || pML->mnFuseCandidateForKF == mpCurrentKeyFrame->mnId)
+//                continue;
+//
+//            // 加入集合，并标记已经加入
+//            pML->mnFuseCandidateForKF = mpCurrentKeyFrame->mnId;
+//            vpLineFuseCandidates.push_back(pML);
+//        }
+//    }
+//    // Step 4.2：进行地图点投影融合,和正向融合操作是完全相同的
+//    // 不同的是正向操作是"每个关键帧和当前关键帧的地图点进行融合",而这里的是"当前关键帧和所有邻接关键帧的地图点进行融合"
+//    line_matcher.Fuse(mpCurrentKeyFrame, vpLineFuseCandidates);
+//
+//    // Update points
+//    // Step 5：更新当前帧地图点的描述子、深度、平均观测方向等属性
+//    vpMapLineMatches = mpCurrentKeyFrame->GetMapLineMatches();
+//    for(size_t i=0, iend=vpMapLineMatches.size(); i<iend; i++) {
+//        MapLine* pML=vpMapLineMatches[i];
+//        if(pML) {
+//            if(!pML->isBad()) {
+//                // 在所有找到pMP的关键帧中，获得最佳的描述子
+//                pML->ComputeDistinctiveDescriptors();
+//
+//                // 更新平均观测方向和观测距离
+//                pML->UpdateNormalAndDepth();
+//            }
+//        }
+//    }
 
 
     // Update connections in covisibility graph

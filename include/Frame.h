@@ -99,7 +99,29 @@ public:
     bool isInFrustum(MapLine* pML, float viewingCosLimit);
 
     // Compute the cell of a keypoint (return false if outside the grid)
+    /**
+     * @brief 计算某个特征点所在网格的网格坐标，如果找到特征点所在的网格坐标，记录在nGridPosX,nGridPosY里，返回true，没找到返回false
+     *
+     * @param[in] kp                    给定的特征点
+     * @param[in & out] posX            特征点所在网格坐标的横坐标
+     * @param[in & out] posY            特征点所在网格坐标的纵坐标
+     * @return true                     如果找到特征点所在的网格坐标，返回true
+     * @return false                    没找到返回false
+     */
     bool PosInGrid(const cv::KeyPoint &kp, int &posX, int &posY);
+
+    /**
+     * @brief 计算某个线特征经过了哪些网格
+     * 找到线特征经过了哪些网格后，把网格坐标记录在pos中，返回true，否则返回false
+     * @param[in] kl                    给定的特征点
+     * @param[in] coefficient           特征线系数
+     * @param[in & out] pos             线特征经过的网格坐标vector
+     * @return true                     如果找到线特征所在的网格坐标，返回true
+     * @return false                    没找到返回false
+     */
+    bool LineInGrid(const KeyLine &kl,
+                    const Eigen::Vector3d &coefficient,
+                    std::vector<std::pair<int, int>> &pos);
 
     // 获取某个点周围一定领域内的特征点索引
     vector<size_t> GetFeaturesInArea(const float &x, const float  &y, const float  &r, const int minLevel=-1, const int maxLevel=-1) const;
@@ -206,9 +228,25 @@ public:
 
 
     // Keypoints are assigned to cells in a grid to reduce matching complexity when projecting MapPoints.
+    //原来通过对图像分区域还能够降低重投影地图点时候的匹配复杂度啊。。。。。
+    ///@note 注意到上面也是类的静态成员变量， 有一个专用的标志mbInitialComputations用来在帧的构造函数中标记这些静态成员变量是否需要被赋值
+    /// 坐标乘以mfGridElementWidthInv和mfGridElementHeightInv就可以确定在哪个格子
     static float mfGridElementWidthInv;
+    /// 坐标乘以mfGridElementWidthInv和mfGridElementHeightInv就可以确定在哪个格子
     static float mfGridElementHeightInv;
+    // 每个网格占用的像素数量
+    static float mfGridElementWidth;
+    static float mfGridElementHeight;
+
+    // 每个格子分配的特征点数，将图像分成格子，保证提取的特征点比较均匀
+    // FRAME_GRID_ROWS 48
+    // FRAME_GRID_COLS 64
+    ///这个向量中存储的是每个图像网格内特征点的id（左图）
     std::vector<std::size_t> mGrid[FRAME_GRID_COLS][FRAME_GRID_ROWS];
+
+    std::vector<std::size_t> mGridLine[FRAME_GRID_COLS][FRAME_GRID_ROWS];
+
+
 
     // Camera pose.
     cv::Mat mTcw;
@@ -251,7 +289,18 @@ private:
     void ComputeImageBounds(const cv::Mat &imLeft);
 
     // Assign keypoints to the grid for speed up feature matching (called in the constructor).
+    /**
+     * @brief 将提取到的特征点分配到图像网格中 \n
+     * @details 该函数由构造函数调用
+     *
+     */
     void AssignFeaturesToGrid();
+    /**
+     * @brief 将提取到的线特征分配到图像网格中 \n
+     * @details 该函数由构造函数调用
+     *
+     */
+    void AssignLineToGrid();
 
     // Rotation, translation and camera center
     cv::Mat mRcw;

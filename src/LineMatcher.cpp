@@ -38,10 +38,87 @@ int LineMatcher::DescriptorDistance(const cv::Mat &a, const cv::Mat &b)
     return dist;
 }
 
-// 这个用来和上一普通帧匹配，匹配方法很多，后续可以改，这里先用普通的K近邻匹配
-// TODO 使用别的匹配方法
+
+/**
+ * @brief 当前帧和前一帧的线特征匹配
+ * 这个用来和上一普通帧匹配，匹配方法很多，后续可以改，这里先用普通的K近邻匹配
+ * TODO 使用别的匹配方法
+ * 对于LastFrame中的MapLine，将其投影到CurrentFrame中
+ * Reference to 《基于点线综合特征的双目视觉SLAM方法》谢晓佳
+ * 需要考虑线段被部分观测到的情况
+ * Step 1 对于前一帧的每一个MapLine，将端点投影到当前帧上
+ * Step 2 投影之后分三种情况
+ *   Step 2.1 两端点都在相机后方，跳过
+ *   Step 2.2 一个在前，一个在后。求直线与图像平面的交点，以这个交点作为图像内线段的端点
+ *            端点计算 Xik = Xsk + lambda * (Xsk - Xek)
+ *            其中Xik[2] = 0，可以计算除lambda，从而计算除Xik[0], Xik[1]
+ *            但端点也有可能跑到图像边界外面，应该也需要裁剪
+ *   Step 2.2 两个端点都在前方。这时候未必两个端点都在图像边界内，将直线裁剪，
+ *            保留图像边界内的部分。Liang-Barsky线段裁剪算法
+ * Step 3 成功投影之后，在投影线周围指定区域内搜索线特征
+ *        点特征容易判断是否在区域内，线特征可能只有部分在内，应该可以判断某个端点在内即可
+ *        以此来获取候选线特征
+ * Step 4 匹配候选线特征
+ *        匹配策略：角度差、长度比值、重叠长度、描述子距离
+ *        匹配数量较少时可以增大阈值
+ *        但好像搜索范围没有减少，上面只是搜索条件，但是线特征以什么标准来限定范围呢？
+ * @param[in] CurrentFrame       当前帧
+ * @param[in] LastFrame          上一帧
+ * @param[in] th                 搜索范围
+ * @param[in] bMono              是否是单目相机，不过这里好像也不用，回头删了
+ * @return int                   成功匹配的数目
+ */
 int LineMatcher::SearchByProjection(Frame &CurrentFrame, const Frame &LastFrame, const float th, const bool bMono) {
+    std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
     int line_nmatches = 0;
+
+//    cv::Mat Tcw_current = CurrentFrame.mTcw;
+//    Eigen::Isometry3d Tcw = Eigen::Isometry3d::Identity();
+//    Tcw(0, 0) = Tcw_current.at<double>(0, 0);
+//    Tcw(0, 1) = Tcw_current.at<double>(0, 1);
+//    Tcw(0, 2) = Tcw_current.at<double>(0, 2);
+//    Tcw(0, 3) = Tcw_current.at<double>(0, 3);
+//
+//    Tcw(1, 0) = Tcw_current.at<double>(1, 0);
+//    Tcw(1, 1) = Tcw_current.at<double>(1, 1);
+//    Tcw(1, 2) = Tcw_current.at<double>(1, 2);
+//    Tcw(1, 3) = Tcw_current.at<double>(1, 3);
+//
+//    Tcw(2, 0) = Tcw_current.at<double>(2, 0);
+//    Tcw(2, 1) = Tcw_current.at<double>(2, 1);
+//    Tcw(2, 2) = Tcw_current.at<double>(2, 2);
+//    Tcw(2, 3) = Tcw_current.at<double>(2, 3);
+//
+//    for (int i = 0; i < LastFrame.mvpMapLines.size(); i++) {
+//        // Step 1 对于前一帧的每一个MapLine，将端点投影到当前帧上
+//        MapLine* pML = LastFrame.mvpMapLines[i];
+//        Eigen::Vector3d Xw_start = pML->mStart3d;
+//        Eigen::Vector3d Xw_end = pML->mEnd3d;
+//
+//        Eigen::Vector3d Xc_start = Tcw * Xw_start;
+//        Eigen::Vector3d Xc_end = Tcw * Xw_start;
+//
+//        // Step 2 投影之后分三种情况
+//
+//        if (Xc_start[2] < 0 && Xc_end[2] < 0) {
+//            // Step 2.1 两端点都在相机后方，跳过
+//            continue;
+//        }
+//        if (Xc_start[2] < 0 || Xc_end[2] < 0) {
+//            // Step 2.2 一个在前，一个在后。求直线与图像平面的交点
+//            // 然后把前面那个端点留下
+//            // 先求交点
+//            double lambda = -1.0 * Xc_start[2] / (Xc_start[2] - Xc_end[2]);
+//            double x_c_cross = Xc_start[0] + lambda * (Xc_start[0] - Xc_end[0]);
+//            double y_c_cross = Xc_start[1] + lambda * (Xc_start[1] - Xc_end[1]);
+//
+//            Eigen::Vector3d Xc_cross(x_c_cross, y_c_cross, 0); // 交点
+//
+//
+//        }
+//    }
+
+
     cv::BFMatcher* bfm = new cv::BFMatcher(cv::NORM_HAMMING, false);
 
     // Matches. Each matches[i] is k or less matches for the same query descriptor.
@@ -57,11 +134,17 @@ int LineMatcher::SearchByProjection(Frame &CurrentFrame, const Frame &LastFrame,
             line_nmatches++;
     }
 
+    std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+    double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
+    std::cout << "CurrentFrame and LastFrame match time: " << ttrack * 1000 << " ms" << std::endl;
+
     return line_nmatches;
 }
 
 // 加一个用来和参考关键帧匹配的
 int LineMatcher::SearchByProjection(Frame &CurrentFrame, KeyFrame *RefFrame, std::vector<MapLine*> &vpMapLineMatches) {
+        std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+
     int line_nmatches = 0;
     cv::BFMatcher* bfm = new cv::BFMatcher(cv::NORM_HAMMING, false);
     vpMapLineMatches = vector<MapLine*>(CurrentFrame.NL, static_cast<MapLine*>(NULL));
@@ -87,25 +170,24 @@ int LineMatcher::SearchByProjection(Frame &CurrentFrame, KeyFrame *RefFrame, std
         }
     }
 
+    std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+    double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
+    std::cout << "CurrentFrame and RefFrame match time: " << ttrack * 1000 << " ms" << std::endl;
+
     return line_nmatches;
 }
 
-// 这个用来和局部地图匹配
 /**
-* @brief 通过投影地图点到当前帧，对Local MapPoint进行跟踪
-* 步骤
-* Step 1 遍历有效的局部地图点
-* Step 2 设定搜索搜索窗口的大小。取决于视角, 若当前视角和平均视角夹角较小时, r取一个较小的值
-* Step 3 通过投影点以及搜索窗口和预测的尺度进行搜索, 找出搜索半径内的候选匹配点索引
-* Step 4 寻找候选匹配点中的最佳和次佳匹配点
-* Step 5 筛选最佳匹配点
-* @param[in] F                         当前帧
-* @param[in] vpMapPoints               局部地图点，来自局部关键帧
-* @param[in] th                        搜索范围
-* @return int                          成功匹配的数目
+ * @brief 这个用来和局部地图匹配。把局部地图线投影到当前帧中，方法和前面相邻帧匹配一样
+ * @param[in] F                   当前帧
+ * @param[in] vpMapLines          局部地图线，在执行这个函数前通过局部关键帧构建的
+ * @param[in] th                  搜索范围
+ * @return int                    成功匹配的数目
 */
 int LineMatcher::SearchByProjection(Frame &F, const std::vector<MapLine*> &vpMapLines, const float th) {
     // TODO 与局部地图的地图线匹配
+    std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+
     int line_nmatches = 0;
 
     // 如果 th！=1 (RGBD 相机或者刚刚进行过重定位), 需要扩大范围搜索
@@ -124,6 +206,8 @@ int LineMatcher::SearchByProjection(Frame &F, const std::vector<MapLine*> &vpMap
 
         // 通过距离预测的金字塔层数，该层数相对于当前的帧
         const int &nPredictedLevel = pML->mnTrackScaleLevel;
+
+
 
         // The size of the window will depend on the viewing direction
         // Step 2 设定搜索搜索窗口的大小。取决于视角, 若当前视角和平均视角夹角较小时, r取一个较小的值
@@ -216,6 +300,10 @@ int LineMatcher::SearchByProjection(Frame &F, const std::vector<MapLine*> &vpMap
             line_nmatches++;
         }
     }
+
+    std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+    double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
+    std::cout << "Match local map costs " << ttrack * 1000 << " ms" << std::endl;
 
     return line_nmatches;
 }

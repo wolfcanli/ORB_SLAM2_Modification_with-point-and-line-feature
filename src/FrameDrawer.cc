@@ -116,6 +116,8 @@ cv::Mat FrameDrawer::DrawFrame()
         //当前帧追踪到的特征点计数
         mnTracked=0;
         mnTrackedVO=0;
+        mnLineTracked = 0;
+        mnLineTrackedVO = 0;
 
         // Draw keypoints
         const float r = 3;

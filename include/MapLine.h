@@ -47,6 +47,9 @@ public:
     // 设置和获取世界坐标系下的坐标
     void SetWorldPos(const Vector6d &Pos);
     Vector6d GetWorldPos();
+    Eigen::Vector3d GetWorldStartPos();
+    Eigen::Vector3d GetWorldEndPos();
+
 
     //世界坐标系下地图点被多个相机观测的平均观测方向
     Eigen::Vector3d GetNormal();
@@ -187,8 +190,10 @@ public:
     static std::mutex mGlobalMutex;
 
 public:
-    // 下面空间直线的表示需要修改，用的不是普吕克坐标
     // Position in absolute coordinates
+    // 普吕克坐标，用在图优化里
+    Vector6d mPluckerCoordinates;
+
     // 由两端点坐标构成的空间直线的表示
     Vector6d mWorldPos;
     Eigen::Vector3d mStart3d;

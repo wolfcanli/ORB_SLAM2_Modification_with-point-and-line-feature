@@ -9,6 +9,7 @@ MESSAGE("Build type: " ${CMAKE_BUILD_TYPE})
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -Wall  -O3 -march=native ")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall   -O3 -march=native")
+#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
 
 # set C++14 standard
 SET(CMAKE_CXX_STANDARD 14)
@@ -33,16 +34,12 @@ message(STATUS "Pangolin version = " ${Pangolin_VERSION})
 find_package(PCL REQUIRED)
 message(STATUS "PCL version: " ${PCL_VERSION})
 
-find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
-message(STATUS "Python3 version: " ${Python3_VERSION})
-
 include_directories(
 ${PROJECT_SOURCE_DIR}
 ${PROJECT_SOURCE_DIR}/include
 ${EIGEN3_INCLUDE_DIR}
 ${Pangolin_INCLUDE_DIRS}
 ${PCL_INCLUDE_DIRS}
-${Python3_INCLUDE_DIRS}
 )
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
@@ -79,8 +76,6 @@ ${Pangolin_LIBRARIES}
 ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
 ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
 ${PCL_LIBRARIES}
-${Python3_lIBRARIES}
-/usr/lib/x86_64-linux-gnu/libpython3.8.so
 )
 
 # Build examples
