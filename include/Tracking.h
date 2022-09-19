@@ -54,17 +54,6 @@ class LoopClosing;
 class System;
 class PointCloudMapping;
 
-struct compare_by_maxDepth
-{
-    inline bool operator() (const pair<pair<float,float>, int>& a, const pair<pair<float,float>, int>& b)
-    {
-        float aDepthMax = max(a.first.first, a.first.second);
-        float bDepthMax = max(b.first.first, b.first.second);
-
-        return aDepthMax < bDepthMax;   //按照升序排列
-
-    }
-};
 
 class Tracking
 {  

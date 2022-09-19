@@ -77,7 +77,7 @@ void Optimizer::GlobalBundleAdjustemntWithLine(ORB_SLAM2::Map *pMap, int nIterat
     std::vector<MapLine*> vpMLs = pMap->GetAllMapLines();
 
     // 调用GBA
-    BundleAdjustmentWithLines(vpKFs,vpMPs, vpMLs, nIterations,pbStopFlag, nLoopKF, bRobust);
+//    BundleAdjustmentWithLines(vpKFs,vpMPs, vpMLs, nIterations,pbStopFlag, nLoopKF, bRobust);
 
 }
 
@@ -1667,6 +1667,7 @@ void Optimizer::BundleAdjustmentWithLines(const std::vector<KeyFrame*> &vpKFs,
 
     double invSigma = 0.01;  //add
 
+#if 0
     // 不参与优化的地图点
     vector<bool> vbNotIncludedMP;
     vbNotIncludedMP.resize(vpMPs.size());
@@ -2103,6 +2104,7 @@ void Optimizer::BundleAdjustmentWithLines(const std::vector<KeyFrame*> &vpKFs,
             Converter::toCvMat(vEndP->estimate()).copyTo(pML->mPosGBA.rowRange(3,6));
         }
     }
+#endif
 }
 
 /**
@@ -2131,17 +2133,23 @@ int Optimizer::PoseOptimizationWithLines(Frame* pFrame) {
     // 该优化函数主要用于Tracking线程中：运动跟踪、参考帧跟踪、地图跟踪、重定位
 
     // Step 1：构造g2o优化器, BlockSolver_6_3表示：位姿 _PoseDim 为6维，路标点 _LandmarkDim 是3维
-    g2o::SparseOptimizer optimizer;
-    g2o::BlockSolver_6_3::LinearSolverType * linearSolver;
+    // TODO 加了线特征之后求解器维度好像也应该变吧，那应该变成多少呢？
+    //   template <int _PoseDim, int _LandmarkDim> struct BlockSolverTraits {};
+    typedef g2o::BlockSolver<g2o::BlockSolverTraits<6, 9>> BlockSolverLineType;
 
-    linearSolver = new g2o::LinearSolverDense<g2o::BlockSolver_6_3::PoseMatrixType>();
+    // 创建一个线性求解器
+    // LinearSolverType: LinearSolver<Matrix<double, PoseDim, PoseDim>>
+    BlockSolverLineType::LinearSolverType* linearSolver;
+    // PoseMatrixType: Matrix<double, PoseDim, PoseDim>
+    linearSolver = new g2o::LinearSolverDense<BlockSolverLineType::PoseMatrixType>();
 
-    g2o::BlockSolver_6_3 * solver_ptr = new g2o::BlockSolver_6_3(linearSolver);
-
+    // 创建一个求解器，从GN,LM等一些算法里面选一个
+    BlockSolverLineType* solver_ptr = new BlockSolverLineType(linearSolver);
     g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
+
+    // 创建稀疏优化器并设定优化算法
+    g2o::SparseOptimizer optimizer;
     optimizer.setAlgorithm(solver);
-
-
 
     // Set Frame vertex
     // Step 2：添加顶点：待优化当前帧的Tcw
@@ -2275,21 +2283,16 @@ int Optimizer::PoseOptimizationWithLines(Frame* pFrame) {
     } // 离开临界区
 
     // ======================== 添加地图线的顶点 ===============================
-    // Set MapLine vertices
+    // TODO 添加线特征的边
     const int NL = pFrame->NL;
-    // 输入的帧中,有效的,参与优化过程的2D-3D点对
+    // 输入的帧中,有效的,参与优化过程的 2D-3D 点对
     int nLineInitialCorrespondences = 0;
 
     // 包括起点和终点
-    vector<EdgeLineProjectXYZOnlyPose*> vpEdgesLineStart;
-    vector<size_t> vnIndexEdgeLineStart;
-    vpEdgesLineStart.reserve(NL);
-    vnIndexEdgeLineStart.reserve(NL);
-
-    vector<EdgeLineProjectXYZOnlyPose*> vpEdgesLineEnd;
-    vector<size_t> vnIndexEdgeLineEnd;
-    vpEdgesLineEnd.reserve(NL);
-    vnIndexEdgeLineEnd.reserve(NL);
+    vector<g2o::EdgeLineOnlyPose*> vpEdgesLine;
+    vector<size_t> vnIndexEdgeLine;
+    vpEdgesLine.reserve(NL);
+    vnIndexEdgeLine.reserve(NL);
 
     // 添加一元边
     {
@@ -2297,8 +2300,6 @@ int Optimizer::PoseOptimizationWithLines(Frame* pFrame) {
         unique_lock<mutex> lock(MapPoint::mGlobalMutex);
 
         // 遍历当前地图中的所有地图线
-        // 线特征的话，把起点和终点看成顶点
-        // 后面处理外点的时候使用
         for(int i=0; i<NL; i++) {
             MapLine* pML = pFrame->mvpMapLines[i];
             // 如果这个地图点还存在没有被剔除掉
@@ -2311,49 +2312,42 @@ int Optimizer::PoseOptimizationWithLines(Frame* pFrame) {
                 line_obs = pFrame->mvKeyLineCoefficient[i];
                 // 这条边
                 const KeyLine &kpLineUn = pFrame->mvKeyLinesUn[i];
+                Eigen::Vector4d obs_line(kpLineUn.startPointX,
+                                         kpLineUn.startPointY,
+                                         kpLineUn.endPointX,
+                                         kpLineUn.endPointY);
+
                 // 边的协方差
                 const float invSigma2 = pFrame->mvInvLevelSigma2[kpLineUn.octave];
-                Eigen::Matrix3d Info = Eigen::Matrix3d::Identity() * invSigma2;
+                Eigen::Matrix2d Info = Eigen::Matrix2d::Identity() * invSigma2;
 
                 // ========================= 设置起点边 ===============================
                 // 新建边，一元边，误差为起点到线的距离
-                EdgeLineProjectXYZOnlyPose* el_start = new EdgeLineProjectXYZOnlyPose();
-                el_start->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(0)));
-                el_start->setMeasurement(line_obs);
+                g2o::EdgeLineOnlyPose* e_l = new g2o::EdgeLineOnlyPose();
+                e_l->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(0)));
+                e_l->setMeasurement(obs_line);
                 // 置信程度主要是看左目特征点所在的图层
-                el_start->setInformation(Info);
+                e_l->setInformation(Info);
 
-                g2o::RobustKernelHuber* rk_start = new g2o::RobustKernelHuber;
-                el_start->setRobustKernel(rk_start);
-                rk_start->setDelta(deltaStereo);
-                el_start->fx = pFrame->fx;
-                el_start->fy = pFrame->fy;
-                el_start->cx = pFrame->cx;
-                el_start->cy = pFrame->cy;
-                el_start->Xw = pML->GetWorldPos().head(3);
-                optimizer.addEdge(el_start);
-                vpEdgesLineStart.push_back(el_start);
-                vnIndexEdgeLineStart.push_back(i);
+                g2o::RobustKernelHuber* rkh = new g2o::RobustKernelHuber;
+                e_l->setRobustKernel(rkh);
+                rkh->setDelta(deltaStereo);
 
-                // ========================= 设置终点边 ===============================
-                // 新建边，一元边，误差为终点到线的距离
-                EdgeLineProjectXYZOnlyPose* el_end = new EdgeLineProjectXYZOnlyPose();
-                el_end->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(0)));
-                el_end->setMeasurement(line_obs);
-                // 置信程度主要是看左目特征点所在的图层
-                el_end->setInformation(Info);
+                e_l->fx_ = pFrame->fx;
+                e_l->fy_ = pFrame->fy;
+                e_l->cx_ = pFrame->cx;
+                e_l->cy_ = pFrame->cy;
 
-                g2o::RobustKernelHuber* rk_end = new g2o::RobustKernelHuber;
-                el_end->setRobustKernel(rk_end);
-                rk_end->setDelta(deltaStereo);
-                el_end->fx = pFrame->fx;
-                el_end->fy = pFrame->fy;
-                el_end->cx = pFrame->cx;
-                el_end->cy = pFrame->cy;
-                el_end->Xw = pML->GetWorldPos().tail(3);
-                optimizer.addEdge(el_end);
-                vpEdgesLineEnd.push_back(el_end);
-                vnIndexEdgeLineEnd.push_back(i);
+                Eigen::Vector3d sp = pML->GetWorldStartPos();
+                Eigen::Vector3d ep = pML->GetWorldEndPos();
+
+                // 空间直线的普吕克坐标
+                e_l->nw_ = sp.cross(ep);
+                e_l->vw_ = ep - sp;
+
+                optimizer.addEdge(e_l);
+                vpEdgesLine.push_back(e_l);
+                vnIndexEdgeLine.push_back(i);
             }
         }
     } // 离开临界区
@@ -2450,36 +2444,29 @@ int Optimizer::PoseOptimizationWithLines(Frame* pFrame) {
 
         // =========================== 对线特征误差边的处理 ===================================
         nLineBad = 0;
-        for(size_t i=0, iend=vpEdgesLineStart.size(); i<iend; i++) {
-            EdgeLineProjectXYZOnlyPose* e_start = vpEdgesLineStart[i];  //线段起始点误差边
-            EdgeLineProjectXYZOnlyPose* e_end = vpEdgesLineEnd[i];  //线段终止点误差边
+        for(size_t i=0, iend=vpEdgesLine.size(); i<iend; i++) {
+            g2o::EdgeLineOnlyPose* e_line = vpEdgesLine[i];
 
-            const size_t idx = vnIndexEdgeLineStart[i];    //线段起始点和终止点的误差边的index一样
+            const size_t idx = vnIndexEdgeLine[i];
 
             if(pFrame->mvbLineOutlier[idx]) {
-                e_start->computeError();  //重写线误差边的时候这个函数也要重写吧
-                e_end->computeError();
+                e_line->computeError();  //重写线误差边的时候这个函数也要重写吧
             }
 
-            const float chi2_s = e_start->chi2();
-            const float chi2_e = e_end->chi2();
+            const float chi2_l = e_line->chi2();
 
             //这里只要有一个端点的误差边误差过大，就认为这条线是外点了
-            // TODO 如果我在直线上用很多个点来构造很多误差边，那么少数点误差过大不一定要把整条边都看作是外点
-            if(chi2_s > 2 * chi2Stereo[it] || chi2_e > 2 * chi2Stereo[it]) {
+            if(chi2_l > 2 * chi2Stereo[it]) {
                 pFrame->mvbLineOutlier[idx] = true;
-                e_start->setLevel(1);
-                e_end->setLevel(1);
+                e_line->setLevel(1);
                 nLineBad++;
             } else {
                 pFrame->mvbLineOutlier[idx] = false;
-                e_start->setLevel(0);
-                e_end->setLevel(0);
+                e_line->setLevel(0);
             }
 
             if(it==2) {
-                e_start->setRobustKernel(0);
-                e_end->setRobustKernel(0);
+                e_line->setRobustKernel(0);
             }
         }
 

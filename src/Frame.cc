@@ -31,6 +31,7 @@ bool Frame::mbInitialComputations=true;
 float Frame::cx, Frame::cy, Frame::fx, Frame::fy, Frame::invfx, Frame::invfy;
 float Frame::mnMinX, Frame::mnMinY, Frame::mnMaxX, Frame::mnMaxY;
 float Frame::mfGridElementWidthInv, Frame::mfGridElementHeightInv;
+float Frame::mfGridElementWidth, Frame::mfGridElementHeight;
 
 Frame::Frame()
 {}
@@ -56,6 +57,11 @@ Frame::Frame(const Frame &frame)
     for(int i=0;i<FRAME_GRID_COLS;i++)
         for(int j=0; j<FRAME_GRID_ROWS; j++)
             mGrid[i][j]=frame.mGrid[i][j];
+
+    for(int i=0;i<FRAME_GRID_COLS;i++)
+        for(int j=0; j<FRAME_GRID_ROWS; j++)
+            mGridLine[i][j]=frame.mGridLine[i][j];
+
 
     if(!frame.mTcw.empty())
         SetPose(frame.mTcw);
@@ -178,6 +184,10 @@ Frame::Frame(const cv::Mat &imGray, const cv::Mat &imDepth, const double &timeSt
         mfGridElementWidthInv=static_cast<float>(FRAME_GRID_COLS)/static_cast<float>(mnMaxX-mnMinX);
         mfGridElementHeightInv=static_cast<float>(FRAME_GRID_ROWS)/static_cast<float>(mnMaxY-mnMinY);
 
+        // 表示一个网格有多少个像素，宽高
+        mfGridElementWidth = static_cast<float>(mnMaxX-mnMinX)/static_cast<float>(FRAME_GRID_COLS);
+        mfGridElementHeight = static_cast<float>(mnMaxY-mnMinY)/static_cast<float>(FRAME_GRID_ROWS);
+
         fx = K.at<float>(0,0);
         fy = K.at<float>(1,1);
         cx = K.at<float>(0,2);
@@ -191,6 +201,7 @@ Frame::Frame(const cv::Mat &imGray, const cv::Mat &imDepth, const double &timeSt
     mb = mbf/fx;
 
     AssignFeaturesToGrid();
+//    AssignLineToGrid();
 }
 
 
@@ -272,6 +283,35 @@ void Frame::AssignFeaturesToGrid()
         if(PosInGrid(kp,nGridPosX,nGridPosY))
             //如果找到特征点所在网格坐标，将这个特征点的索引添加到对应网格的数组mGrid中
             mGrid[nGridPosX][nGridPosY].push_back(i);
+    }
+}
+
+void Frame::AssignLineToGrid() {
+    // TODO
+    // Step 1  给存储特征点的网格数组 Frame::mGrid 预分配空间
+    // FRAME_GRID_COLS = 64，FRAME_GRID_ROWS=48
+//    int nReserve = 0.5f * NL / (FRAME_GRID_COLS * FRAME_GRID_ROWS);
+    int nReserve = 10;
+
+    //开始对mGrid这个二维数组中的每一个vector元素遍历并预分配空间
+    for(unsigned int i = 0; i < FRAME_GRID_COLS; i++)
+        for (unsigned int j = 0; j < FRAME_GRID_ROWS; j++)
+            mGridLine[i][j].reserve(nReserve);
+
+    // Step 2 遍历每个线特征，找到该线特征所经过的网格坐标，并将线特征索引添加到网格中
+    for(int i = 0; i < NL; i++) {
+        //从类的成员变量中获取已经去畸变后的特征点
+        const KeyLine &kl = mvKeyLinesUn[i];
+        Eigen::Vector3d coefficient = mvKeyLineCoefficient[i];
+        // 存储kl所经过的网格坐标
+        std::vector<std::pair<int, int>> pos;
+
+        if(LineInGrid(kl, coefficient, pos)) {
+            // 把pos中的网格每个分配线特征索引
+            for (int n = 0; n < pos.size(); n++) {
+                mGridLine[pos[n].first][pos[n].second].push_back(i);
+            }
+        }
     }
 }
 
@@ -537,6 +577,7 @@ vector<size_t> Frame::GetLinesInArea(const float &x_s, const float &y_s,
 
 bool Frame::PosInGrid(const cv::KeyPoint &kp, int &posX, int &posY)
 {
+    // TODO 这个地方怎么感觉不对，好像应该是floor，round四舍五入不大对把？
     posX = round((kp.pt.x-mnMinX)*mfGridElementWidthInv);
     posY = round((kp.pt.y-mnMinY)*mfGridElementHeightInv);
 
@@ -544,6 +585,183 @@ bool Frame::PosInGrid(const cv::KeyPoint &kp, int &posX, int &posY)
     if(posX<0 || posX>=FRAME_GRID_COLS || posY<0 || posY>=FRAME_GRID_ROWS)
         return false;
 
+    return true;
+}
+
+/**
+ * @brief 计算某个线特征经过了哪些网格
+ * 找到线特征经过了哪些网格后，把网格坐标记录在pos中，返回true，否则返回false
+ * 步骤
+ * Step 1 首先计算起点终点网格坐标
+ * Step 2 后面分情况
+ *       1、起点坐标在终点坐标左边
+ *       2、起点坐标在终点坐标右边
+ *       3、起点坐标和终点坐标在同一列
+ *
+ * Step 3
+ *
+ * @param[in] kl                    给定的特征点
+ * @param[in] coefficient           特征线系数
+ * @param[in & out] pos             线特征经过的网格坐标vector
+ * @return true                     如果找到线特征所在的网格坐标，返回true
+ * @return false                    没找到返回false
+ */
+bool Frame::LineInGrid(const KeyLine &kl,
+                       const Eigen::Vector3d &coefficient,
+                       std::vector<std::pair<int, int>> &pos) {
+    // 起点所在的网格坐标
+    int start_point_posX = floor((kl.startPointX - mnMinX) * mfGridElementWidthInv);
+    int start_point_posY = floor((kl.startPointY - mnMinY) * mfGridElementHeightInv);
+    // 终点所在的网格坐标
+    int end_point_posX = floor((kl.endPointX - mnMinX) * mfGridElementWidthInv);
+    int end_point_posY = floor((kl.endPointY - mnMinY) * mfGridElementHeightInv);
+
+    // 计算网格边界与直线的交点
+    // x方向横跨网格数量 - 1
+    int nums_grid_x = abs(end_point_posX - start_point_posX);
+    // TODO 下面的代码有报错free() invaild pointer
+    // 直线与网格纵线交点
+    if (nums_grid_x == 0) {
+        // 起点和终点在同一列内，这时候就没有和纵线相交的点了
+        // 如果起点终点又在同一行内，那这条线段整体都在某个网格内
+        // TODO 这里好像写的不对，不过也也没大碍，毕竟起点终点本来就要算进去
+        int grid_pos_x = start_point_posX;
+        int grid_pos_y = start_point_posY;
+
+        if(!(grid_pos_x<0 || grid_pos_x>=FRAME_GRID_COLS || grid_pos_y<0 || grid_pos_y>=FRAME_GRID_ROWS)) {
+            if (std::find(pos.begin(), pos.end(), std::pair<int, int>(grid_pos_x, grid_pos_y)) == pos.end()) {
+                pos.push_back(std::pair<int, int>(grid_pos_x, grid_pos_y));
+            }
+        }
+
+    } else {
+        // 起点终点不在同一列内，那就分左右，坐标计算一个加一个减
+        for (int i = 0; i < nums_grid_x; i++) {
+            // TODO 不过这里好像也不用分起点和终点相对位置，毕竟直线方向信息在这里没用到
+            if (start_point_posX < end_point_posX) {
+                // 起点在终点左边
+                // 计算直线与网格纵线的交点
+                float x = float(start_point_posX + i) * mfGridElementWidth; // 相交的网格纵线x坐标
+                float y = -1.0 * (coefficient[0] * x + coefficient[2]) / coefficient[1]; // y坐标，带入直线方程计算
+
+                // 这个交点的左右两个网格就是直线经过的网格
+                int grid_pos_x = start_point_posX + i;
+                int grid_pos_y = floor((y - mnMinY)  * mfGridElementHeightInv);
+
+                // 纵线交点的左右网格添加到pos中
+                if(!(grid_pos_x<0 || grid_pos_x>=FRAME_GRID_COLS || grid_pos_y<0 || grid_pos_y>=FRAME_GRID_ROWS)) {
+                    if (pos.empty()) {
+                        pos.push_back(std::pair<int, int>(grid_pos_x, grid_pos_y));
+                        pos.push_back(std::pair<int, int>(grid_pos_x + 1, grid_pos_y));
+                    } else {
+                        if (std::find(pos.begin(), pos.end(), std::pair<int, int>(grid_pos_x, grid_pos_y)) == pos.end()) {
+                            pos.push_back(std::pair<int, int>(grid_pos_x, grid_pos_y));
+                        }
+
+                        if (std::find(pos.begin(), pos.end(), std::pair<int, int>(grid_pos_x + 1, grid_pos_y)) == pos.end()) {
+                            pos.push_back(std::pair<int, int>(grid_pos_x + 1, grid_pos_y));
+                        }
+                    }
+                }
+
+            } else if (start_point_posX > end_point_posX) {
+                // 起点在终点右边
+                // 计算直线与网格纵线的交点
+                float x = float(start_point_posX - 1 - i) * mfGridElementWidth; // 相交的网格纵线x坐标
+                float y = -1.0 * (coefficient[0] * x + coefficient[2]) / coefficient[1]; // y坐标，带入直线方程计算
+                // 这个交点的左右两个网格就是直线经过的网格
+                int grid_pos_x = start_point_posX - 1 - i;
+                int grid_pos_y = floor((y - mnMinY)  * mfGridElementHeightInv);
+
+                // 纵线交点的左右网格添加到pos中
+                if(!(grid_pos_x<0 || grid_pos_x>=FRAME_GRID_COLS || grid_pos_y<0 || grid_pos_y>=FRAME_GRID_ROWS)) {
+                    if (pos.empty()) {
+                        pos.push_back(std::pair<int, int>(grid_pos_x, grid_pos_y));
+                        pos.push_back(std::pair<int, int>(grid_pos_x + 1, grid_pos_y));
+                    } else {
+                        if (std::find(pos.begin(), pos.end(), std::pair<int, int>(grid_pos_x, grid_pos_y)) == pos.end()) {
+                            pos.push_back(std::pair<int, int>(grid_pos_x, grid_pos_y));
+                        }
+
+                        if (std::find(pos.begin(), pos.end(), std::pair<int, int>(grid_pos_x + 1, grid_pos_y)) == pos.end()) {
+                            pos.push_back(std::pair<int, int>(grid_pos_x + 1, grid_pos_y));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+//    // y方向横跨网格数量 - 1
+//    int nums_grid_y = abs(end_point_posY - start_point_posY);
+//    // 直线与网格横线交点
+//    if (nums_grid_y == 0) {
+//        // 起点和终点在同一行内，这时候就没有和横线相交的点了
+//        // 如果起点终点又在同一列内，那这条线段整体都在某个网格内
+//        int grid_pos_x = start_point_posX;
+//        int grid_pos_y = start_point_posY;
+//
+//        if (std::find(pos.begin(), pos.end(), std::pair<int, int>(grid_pos_x, grid_pos_y)) == pos.end()) {
+//            pos.push_back(std::pair<int, int>(grid_pos_x, grid_pos_y));
+//        }
+//
+//    } else {
+//        // 起点终点不在同一行内，那就分上下，坐标计算一个加一个减
+//        for (int i = 0; i < nums_grid_y; i++) {
+//            if (start_point_posY < end_point_posY) {
+//                // 起点在终点上面
+//                // 计算直线与网格横线的交点
+//                float y = (start_point_posY + i) * mfGridElementHeight; // 相交的网格横线y坐标
+//                float x = -1.0 * (coefficient[1] * y + coefficient[2]) / coefficient[0]; // x坐标，带入直线方程计算
+//
+//                // 这个交点的上下两个网格就是直线经过的网格
+//                int grid_pos_y = start_point_posY + i;
+//                int grid_pos_x = floor((x - mnMinX)  * mfGridElementWidthInv);
+//
+//                // 纵线交点的左右网格添加到pos中
+//                if (pos.empty()) {
+//                    pos.push_back(std::pair<int, int>(grid_pos_x, grid_pos_y));
+//                    pos.push_back(std::pair<int, int>(grid_pos_x, grid_pos_y + 1));
+//                } else {
+//                    if (std::find(pos.begin(), pos.end(), std::pair<int, int>(grid_pos_x, grid_pos_y)) == pos.end()) {
+//                        pos.push_back(std::pair<int, int>(grid_pos_x, grid_pos_y));
+//                    }
+//
+//                    if (std::find(pos.begin(), pos.end(), std::pair<int, int>(grid_pos_x, grid_pos_y + 1)) == pos.end()) {
+//                        pos.push_back(std::pair<int, int>(grid_pos_x, grid_pos_y + 1));
+//                    }
+//                }
+//
+//            } else if (start_point_posY > end_point_posY) {
+//                // 起点在终点下面
+//                // 计算直线与网格横线的交点
+//                float y = (start_point_posY - 1 - i) * mfGridElementHeight; // 相交的网格横线y坐标
+//                float x = -1.0 * (coefficient[1] * y + coefficient[2]) / coefficient[0]; // x坐标，带入直线方程计算
+//                // 这个交点的上下两个网格就是直线经过的网格
+//                int grid_pos_y = start_point_posY - 1 - i;
+//                int grid_pos_x = floor((x - mnMinX)  * mfGridElementWidthInv);
+//
+//                // 纵线交点的左右网格添加到pos中
+//                if (pos.empty()) {
+//                    pos.push_back(std::pair<int, int>(grid_pos_x, grid_pos_y));
+//                    pos.push_back(std::pair<int, int>(grid_pos_x, grid_pos_y + 1));
+//                } else {
+//                    if (std::find(pos.begin(), pos.end(), std::pair<int, int>(grid_pos_x, grid_pos_y)) == pos.end()) {
+//                        pos.push_back(std::pair<int, int>(grid_pos_x, grid_pos_y));
+//                    }
+//
+//                    if (std::find(pos.begin(), pos.end(), std::pair<int, int>(grid_pos_x, grid_pos_y)) == pos.end()) {
+//                        pos.push_back(std::pair<int, int>(grid_pos_x, grid_pos_y + 1));
+//                    }
+//                }
+//            }
+//        }
+//    }
+
+    std::cout << "pos size = " << pos.size() << std::endl;
+    if (pos.empty()) {
+        return false;
+    }
     return true;
 }
 
@@ -600,6 +818,7 @@ void Frame::UndistortKeyPoints()
 }
 
 void Frame::UndistortKeyLines() {
+    // TODO 线特征这样矫正对吗，我也不知道，那矫正前不是直线的，矫正后是直线这个怎么算，先不管他
     // 对于线特征，矫正起点和终点两个点
     // Step 1 如果第一个畸变参数为0，不需要矫正。第一个畸变参数k1是最重要的，一般不为0，为0的话，说明畸变参数都是0
     //变量mDistCoef中存储了opencv指定格式的去畸变参数，格式为：(k1,k2,p1,p2,k3)
@@ -653,7 +872,8 @@ void Frame::UndistortKeyLines() {
     }
 }
 
-// 计算去畸变图像的便捷
+
+// 计算去畸变图像的边界
 void Frame::ComputeImageBounds(const cv::Mat &imLeft)
 {
     // 如果畸变参数不为0，用OpenCV函数进行畸变矫正

@@ -175,6 +175,7 @@ public:
 
 
     // ========================= 加入线特征的优化 ===============================
+    // TODO 自定义边写好后改这里
     /**
      * @brief bundle adjustment Optimization
      *
@@ -213,6 +214,7 @@ public:
      *
      * 1. Vertex: g2o::VertexSE3Expmap()，即当前帧的Tcw
      * 2. Edge:
+     *     点特征的边，单双都有，这里只用到双目的（RGBD）
      *     - g2o::EdgeSE3ProjectXYZOnlyPose()，BaseUnaryEdge
      *         + Vertex：待优化当前帧的Tcw
      *         + measurement：MapPoint在当前帧中的二维位置(u,v)
@@ -221,7 +223,11 @@ public:
      *         + Vertex：待优化当前帧的Tcw
      *         + measurement：MapPoint在当前帧中的二维位置(ul,v,ur)
      *         + InfoMatrix: invSigma2(与特征点所在的尺度有关)
-     *
+     *     线特征的边
+     *     - g2o::EdgeLineOnlyPose()，BaseUnaryEdge
+     *         + Vertex：待优化当前帧的Tcw
+     *         + measurement： 图像上线段两个端点的二维坐标，这个变量是4维的
+     *         + InfoMatrix: invSigma2(与特征点所在的尺度有关)
      * @param   pFrame Frame
      * @return  inliers数量
      */

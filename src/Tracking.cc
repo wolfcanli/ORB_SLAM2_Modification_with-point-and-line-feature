@@ -1050,7 +1050,7 @@ bool Tracking::TrackReferenceKeyFrame()
  *        这个函数在TrackingWithMotionModel中会用到
  * 在双目和rgbd情况下，选取一些深度小一些的点（可靠一些） \n
  * 可以通过深度值产生一些新的MapPoints,这些点加入TemprolMapPoints
- *
+ * 这些地图点或线都是临时的，用完就删掉，不会添加到Map中去，目的是增加匹配信息，利于位姿估计
  * 函数最终的效果是为上一帧增加了一些新的地图点匹配 mLastFrame.mvpMapPoints[i]=pNewMP
  * 同时做了记录 mlpTemporalPoints.push_back(pNewMP)
  */
@@ -1158,14 +1158,11 @@ void Tracking::UpdateLastFrame()
     vector<pair<pair<float, float>, int>> vDepthIdxLine;
     vDepthIdxLine.reserve(mLastFrame.NL);
 
-    for(int i=0; i<mLastFrame.NL;i++)
-    {
+    for(int i=0; i<mLastFrame.NL;i++) {
         float z_start = mLastFrame.mvDepthLineStart[i];
         float z_end = mLastFrame.mvDepthLineEnd[i];
 
-        if(z_start > 0 && z_end > 0)
-        {
-            // vDepthIdx第一个元素是某个点的深度,第二个元素是对应的特征点id
+        if(z_start > 0 && z_end > 0) {
             vDepthIdxLine.push_back(make_pair(make_pair(z_start, z_end), i));
         }
     }
@@ -1174,8 +1171,13 @@ void Tracking::UpdateLastFrame()
     if(vDepthIdxLine.empty())
         return;
 
+
     // 起点终点的最大值，从小到大排序
-    std::sort(vDepthIdxLine.begin(),vDepthIdxLine.end(), compare_by_maxDepth());
+    std::sort(vDepthIdxLine.begin(),vDepthIdxLine.end(),
+              [](const pair<pair<float,float>, int>& a, const pair<pair<float,float>, int>& b)->bool{
+                  float aDepthMax = max(a.first.first, a.first.second);
+                  float bDepthMax = max(b.first.first, b.first.second);
+                  return aDepthMax < bDepthMax;});
 
     int nLines = 0;
     for(size_t j = 0; j < vDepthIdxLine.size(); j++) {
@@ -1238,7 +1240,7 @@ bool Tracking::TrackWithMotionModel()
     UpdateLastFrame();
 
     // Step 2：根据之前估计的速度，用恒速模型得到当前帧的初始位姿。
-    mCurrentFrame.SetPose(mVelocity*mLastFrame.mTcw);
+    mCurrentFrame.SetPose(mVelocity * mLastFrame.mTcw);
 
     // 清空当前帧的地图点
     fill(mCurrentFrame.mvpMapPoints.begin(),mCurrentFrame.mvpMapPoints.end(),static_cast<MapPoint*>(NULL));
@@ -1666,7 +1668,11 @@ void Tracking::CreateNewKeyFrame()
         // 如果上一帧中没有有效深度的点,那么就直接退出
         if(!vDepthIdxLine.empty()) {
             // 起点终点的最大值，从小到大排序
-            std::sort(vDepthIdxLine.begin(),vDepthIdxLine.end(), compare_by_maxDepth());
+            std::sort(vDepthIdxLine.begin(),vDepthIdxLine.end(),
+                      [](const pair<pair<float,float>, int>& a, const pair<pair<float,float>, int>& b)->bool{
+                        float aDepthMax = max(a.first.first, a.first.second);
+                        float bDepthMax = max(b.first.first, b.first.second);
+                        return aDepthMax < bDepthMax;});
 
             // Step 3.3：从中找出不是地图点的生成临时地图点
             // 处理的近点的个数

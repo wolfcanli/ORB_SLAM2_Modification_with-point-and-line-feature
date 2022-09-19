@@ -41,8 +41,6 @@
 #include <pcl/filters/filter.h>
 #include <pcl/filters/voxel_grid.h>
 
-#include <python3.8/Python.h>
-//#include <numpy/arrayobject.h>
 
 namespace ORB_SLAM2 {
 
@@ -52,8 +50,6 @@ public:
     ~PointCloudMapping();
 
     void Run();
-    void RunNoSegmentation();
-    void RunSegmentation();
 
     void InsertKeyFrame(KeyFrame* kf, cv::Mat& color, cv::Mat& depth);
     void SetGlobalUpdateFlag();
@@ -82,15 +78,12 @@ public:
     std::list<cv::Mat> color_imgs_seg_, depth_imgs_seg_;
 
     pcl::PointCloud<pcl::PointXYZRGBA>::Ptr global_map_; // 普通点云
-    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr seg_map_; // 分割点云（没有）
 
     std::mutex keyframe_mutex_;
     std::mutex finish_mutex_;
     std::mutex point_cloud_mutex_;
-    std::mutex seg_mutex_;
 
     condition_variable keyframe_update_condi_var_;
-    condition_variable seg_update_condi_var_;
 
     std::shared_ptr<std::thread> point_cloud_thread_;
 

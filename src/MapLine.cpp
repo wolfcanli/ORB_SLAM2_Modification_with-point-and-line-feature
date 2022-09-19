@@ -66,6 +66,8 @@ void MapLine::SetWorldPos(const Vector6d &Pos)
     unique_lock<mutex> lock2(mGlobalMutex);
     unique_lock<mutex> lock(mMutexPos);
     mWorldPos = Pos;
+    mStart3d = Pos.head(3);
+    mEnd3d = Pos.tail(3);
 }
 
 Vector6d MapLine::GetWorldPos()
@@ -73,6 +75,16 @@ Vector6d MapLine::GetWorldPos()
     unique_lock<mutex> lock(mMutexPos);
     return mWorldPos;
 }
+
+Eigen::Vector3d MapLine::GetWorldStartPos() {
+    unique_lock<mutex> lock(mMutexPos);
+    return mStart3d;
+}
+Eigen::Vector3d MapLine::GetWorldEndPos() {
+    unique_lock<mutex> lock(mMutexPos);
+    return mEnd3d;
+}
+
 
 Eigen::Vector3d MapLine::GetNormal()
 {
@@ -94,7 +106,7 @@ void MapLine::AddObservation(KeyFrame* pKF, size_t idx)
     mObservations[pKF]=idx;
 
     // 如果直线的两个端点都有深度
-    if(pKF->mvDepthLineStart[idx]>=0 && pKF->mvDepthLineEnd[idx]>=0)
+    if(pKF->mvDepthLineStart[idx] >= 0 && pKF->mvDepthLineEnd[idx] >= 0)
         nObs+=2;
     else
         nObs++;
