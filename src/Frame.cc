@@ -53,7 +53,8 @@ Frame::Frame(const Frame &frame)
      mvuRightLineStart(frame.mvuRightLineStart), mvuRightLineEnd(frame.mvuRightLineEnd),
      mvDepthLineStart(frame.mvDepthLineStart), mvDepthLineEnd(frame.mvDepthLineEnd),
      mLineDescriptors(frame.mLineDescriptors.clone()), mvKeyLineCoefficient(frame.mvKeyLineCoefficient),
-     mvpMapLines(frame.mvpMapLines), mvbLineOutlier(frame.mvbLineOutlier) {
+     mvpMapLines(frame.mvpMapLines), mvbLineOutlier(frame.mvbLineOutlier),
+     im_gray_(frame.im_gray_.clone()), im_depth_(frame.im_depth_.clone()), im_rgb_(frame.im_rgb_.clone()) {
     for(int i=0;i<FRAME_GRID_COLS;i++)
         for(int j=0; j<FRAME_GRID_ROWS; j++)
             mGrid[i][j]=frame.mGrid[i][j];
@@ -61,7 +62,6 @@ Frame::Frame(const Frame &frame)
     for(int i=0;i<FRAME_GRID_COLS;i++)
         for(int j=0; j<FRAME_GRID_ROWS; j++)
             mGridLine[i][j]=frame.mGridLine[i][j];
-
 
     if(!frame.mTcw.empty())
         SetPose(frame.mTcw);
@@ -134,7 +134,7 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
 // 深度图像构造
 Frame::Frame(const cv::Mat &imGray, const cv::Mat &imDepth, const double &timeStamp, ORBextractor* extractor,ORBVocabulary* voc, cv::Mat &K, cv::Mat &distCoef, const float &bf, const float &thDepth)
     :mpORBvocabulary(voc),mpORBextractorLeft(extractor),mpORBextractorRight(static_cast<ORBextractor*>(NULL)),
-     mTimeStamp(timeStamp), mK(K.clone()),mDistCoef(distCoef.clone()), mbf(bf), mThDepth(thDepth)
+     mTimeStamp(timeStamp), mK(K.clone()),mDistCoef(distCoef.clone()), mbf(bf), mThDepth(thDepth), im_gray_(imGray), im_depth_(imDepth)
 {
     // Frame ID
     mnId=nNextId++;
@@ -342,7 +342,7 @@ void Frame::UpdatePoseMatrices()
     mOw = -mRcw.t()*mtcw;
 }
 
-bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit)
+bool Frame::IsInFrustum(MapPoint *pMP, float viewingCosLimit)
 {
     pMP->mbTrackInView = false;
 
@@ -400,83 +400,32 @@ bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit)
     return true;
 }
 
-bool Frame::isInFrustum(ORB_SLAM2::MapLine *pML, float viewingCosLimit) {
-    pML->mbTrackInView = false;
-
+bool Frame::IsInFrustum(ORB_SLAM2::MapLine *pML, float viewingCosLimit) {
     // 3D in absolute coordinates
-    Vector6d P = pML->GetWorldPos();
+    Eigen::Vector3d pw_start = pML->GetWorldStartPos();
+    Eigen::Vector3d pw_end = pML->GetWorldEndPos();
 
-    cv::Mat point_start = (cv::Mat_<float>(3, 1) << P(0), P(1), P(2));
-    cv::Mat point_end = (cv::Mat_<float>(3, 1) << P(3), P(4), P(5));
+    cv::Mat point_w_start = (cv::Mat_<float>(3, 1) << pw_start(0), pw_start(1), pw_start(2));
+    cv::Mat point_w_end = (cv::Mat_<float>(3, 1) << pw_end(0), pw_end(1), pw_end(2));
 
-    const cv::Mat P_start = mRcw * point_start + mtcw;
-    const float &P_start_x = P_start.at<float>(0);
-    const float &P_start_y = P_start.at<float>(1);
-    const float &P_start_z = P_start.at<float>(2);
+    cv::Mat pc_start = mRcw * point_w_start + mtcw;
+    float pc_start_x = pc_start.at<float>(0);
+    float pc_start_y = pc_start.at<float>(1);
+    float pc_start_z = pc_start.at<float>(2);
 
-    const cv::Mat P_end = mRcw * point_end + mtcw;
-    const float &P_end_x = P_end.at<float>(0);
-    const float &P_end_y = P_end.at<float>(1);
-    const float &P_end_z = P_end.at<float>(2);
+    cv::Mat pc_end = mRcw * point_w_end + mtcw;
+    float pc_end_x = pc_end.at<float>(0);
+    float pc_end_y = pc_end.at<float>(1);
+    float pc_end_z = pc_end.at<float>(2);
 
     // Check positive depth
-    if(P_start_z < 0.0f || P_end_z < 0.0f)
+    if(pc_start_z < 0.0f && pc_end_z < 0.0f) {
+        pML->mbTrackInView = false;
         return false;
-
-    // Project in image and check it is not outside
-    const float invz_start = 1.0f / P_start_z;
-    const float u_start = fx * P_start_x * invz_start + cx;
-    const float v_start = fy * P_start_y * invz_start + cy;
-
-    const float invz_end = 1.0f / P_end_z;
-    const float u_end = fx * P_end_x * invz_end + cx;
-    const float v_end = fy * P_end_y * invz_end + cy;
-
-    if(u_start < mnMinX || u_start > mnMaxX)
-        return false;
-    if(v_start < mnMinY || v_start > mnMaxY)
-        return false;
-    if(u_end < mnMinX || u_end > mnMaxX)
-        return false;
-    if(v_end < mnMinY || v_end > mnMaxY)
-        return false;
-
-    // 计算MapLine到相机中心的距离，并判断是否在尺度变化的范围内
-    const float maxDistance = pML->GetMaxDistanceInvariance();
-    const float minDistance = pML->GetMinDistanceInvariance();
-
-    const cv::Mat PO = 0.5 * (point_start + point_end) - mOw;
-    const float dist = cv::norm(PO);
-
-    if(dist < minDistance || dist > maxDistance)
-        return false;
-
-    // Check viewing angle
-    Eigen::Vector3d Pn = pML->GetNormal();
-    cv::Mat pn = (cv::Mat_<float>(3, 1) << Pn(0), Pn(1), Pn(2));
-
-    const float viewCos = PO.dot(pn) / dist;
-
-    if(viewCos < viewingCosLimit)
-        return false;
-
-    // Predict scale in the image
-    const int nPredictedLevel = pML->PredictScale(dist,this);
+    }
 
     // Data used by the tracking
     pML->mbTrackInView = true;
-
-    pML->mTrackProjStartX = u_start;
-    pML->mTrackProjStartY = v_start;
-    pML->mTrackProjStartXR = u_start - mbf * invz_start;
-
-    pML->mTrackProjEndX = u_end;
-    pML->mTrackProjEndY = v_end;
-    pML->mTrackProjEndXR = u_end - mbf * invz_end;
-
-    pML->mnTrackScaleLevel= nPredictedLevel;
-    pML->mTrackViewCos = viewCos;
-
     return true;
 }
 
@@ -862,12 +811,35 @@ void Frame::UndistortKeyLines() {
     {
         //根据索引获取这个特征线
         //注意之所以这样做而不是直接重新声明一个特征线对象的目的是，能够得到源特征线对象的其他属性
+        // 对于KeyLine来将，起点终点变了之后，还有其他属性会变
         KeyLine kl = mvKeyLines[i];
+        // 修改起点终点，原始图像中
         kl.startPointX = mat_start.at<float>(i, 0);
         kl.startPointY = mat_start.at<float>(i, 1);
         kl.endPointX = mat_end.at<float>(i, 0);
         kl.endPointY = mat_end.at<float>(i, 1);
+        // 修改起点终点，相应分层的图像中，这里只有一层
+        // TODO 没有把分层作为输入参数
+        kl.sPointInOctaveX = mat_start.at<float>(i, 0);
+        kl.sPointInOctaveY = mat_start.at<float>(i, 1);
+        kl.ePointInOctaveX = mat_end.at<float>(i, 0);
+        kl.ePointInOctaveY = mat_end.at<float>(i, 1);
+        // 修改中点坐标
+        kl.pt = cv::Point2f((kl.endPointX + kl.startPointX) / 2, (kl.endPointY + kl.startPointY) / 2);
+        // 修改长度和像素数
+        kl.lineLength = float(sqrt(pow(kl.startPointX - kl.endPointX, 2) + pow(kl.startPointY - kl.endPointY, 2)));
+        cv::LineIterator li(im_gray_,
+                            cv::Point2f(kl.startPointX, kl.startPointY),
+                            cv::Point2f(kl.endPointX, kl.endPointY));
+        kl.numOfPixels = li.count;
+        // 修改角度
+        kl.angle = atan2((kl.endPointY - kl.startPointY), (kl.endPointX - kl.startPointX));
+        // 修改最小包含区域
+        kl.size = (kl.endPointX - kl.startPointX) * (kl.endPointY - kl.startPointY);
+        // 修改强度
+        kl.response = kl.lineLength / max(im_gray_.cols, im_gray_.rows);
 
+        // 结果除了分层和id，其他都改了，要是分层检测，那基本都变了，和直接新建一个差不多
         mvKeyLinesUn[i] = kl;
     }
 }

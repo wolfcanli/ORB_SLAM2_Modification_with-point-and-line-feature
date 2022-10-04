@@ -388,7 +388,7 @@ public:
     std::vector<KeyFrame*> mvpLocalKeyFrames;
     ///局部地图点的集合
     std::vector<MapPoint*> mvpLocalMapPoints;
-    // 局部地图线的几何
+    // 局部地图线的集合
     std::vector<MapLine*> mvpLocalMapLines;
 
     // System

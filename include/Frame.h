@@ -93,10 +93,10 @@ public:
 
     // Check if a MapPoint is in the frustum of the camera
     // and fill variables of the MapPoint to be used by the tracking
-    bool isInFrustum(MapPoint* pMP, float viewingCosLimit);
+    bool IsInFrustum(MapPoint* pMP, float viewingCosLimit);
     // 判断地图线是否能被当前帧观测到，这里是判断两个端点在不在视锥内
     // TODO 那只有一部分能被观测到怎么算？
-    bool isInFrustum(MapLine* pML, float viewingCosLimit);
+    bool IsInFrustum(MapLine* pML, float viewingCosLimit);
 
     // Compute the cell of a keypoint (return false if outside the grid)
     /**
@@ -226,7 +226,6 @@ public:
     std::vector<MapLine*> mvpMapLines; // 与特征线关联的地图线
     std::vector<bool> mvbLineOutlier;
 
-
     // Keypoints are assigned to cells in a grid to reduce matching complexity when projecting MapPoints.
     //原来通过对图像分区域还能够降低重投影地图点时候的匹配复杂度啊。。。。。
     ///@note 注意到上面也是类的静态成员变量， 有一个专用的标志mbInitialComputations用来在帧的构造函数中标记这些静态成员变量是否需要被赋值
@@ -245,8 +244,6 @@ public:
     std::vector<std::size_t> mGrid[FRAME_GRID_COLS][FRAME_GRID_ROWS];
 
     std::vector<std::size_t> mGridLine[FRAME_GRID_COLS][FRAME_GRID_ROWS];
-
-
 
     // Camera pose.
     cv::Mat mTcw;
@@ -275,8 +272,11 @@ public:
 
     static bool mbInitialComputations;
 
+    cv::Mat im_rgb_;
+    cv::Mat im_gray_;
+    cv::Mat im_depth_;
 
-private:
+public:
 
     // Undistort keypoints given OpenCV distortion parameters.
     // Only for the RGB-D case. Stereo must be already rectified!

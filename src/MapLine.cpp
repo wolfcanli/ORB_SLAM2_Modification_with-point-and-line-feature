@@ -34,6 +34,11 @@ MapLine::MapLine(const Vector6d &Pos, Map* pMap, Frame* pFrame, const int &idxF)
     mWorldPos = Pos;
     mStart3d = Pos.head(3);
     mEnd3d = Pos.tail(3);
+    // 计算普吕克坐标
+    Eigen::Vector3d nw = mStart3d.cross(mEnd3d);
+    Eigen::Vector3d vw = mEnd3d - mStart3d;
+    mPluckerCoordinates.head(3) = nw;
+    mPluckerCoordinates.tail(3) = vw;
 
     cv::Mat Ow = pFrame->GetCameraCenter();
     Eigen::Vector3d o_w(Ow.at<double>(0), Ow.at<double>(1), Ow.at<double>(2));
@@ -69,6 +74,22 @@ void MapLine::SetWorldPos(const Vector6d &Pos)
     mStart3d = Pos.head(3);
     mEnd3d = Pos.tail(3);
 }
+
+void MapLine::SetStartPos(const Eigen::Vector3d &Pos) {
+    unique_lock<mutex> lock2(mGlobalMutex);
+    unique_lock<mutex> lock(mMutexPos);
+    mStart3d = Pos;
+    mWorldPos.head(3) = Pos;
+}
+
+void MapLine::SetEndPos(const Eigen::Vector3d &Pos) {
+    unique_lock<mutex> lock2(mGlobalMutex);
+    unique_lock<mutex> lock(mMutexPos);
+    mEnd3d = Pos;
+    mWorldPos.tail(3) = Pos;
+}
+
+
 
 Vector6d MapLine::GetWorldPos()
 {

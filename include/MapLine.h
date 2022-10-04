@@ -46,6 +46,8 @@ public:
 
     // 设置和获取世界坐标系下的坐标
     void SetWorldPos(const Vector6d &Pos);
+    void SetStartPos(const Eigen::Vector3d &Pos);
+    void SetEndPos(const Eigen::Vector3d &Pos);
     Vector6d GetWorldPos();
     Eigen::Vector3d GetWorldStartPos();
     Eigen::Vector3d GetWorldEndPos();
@@ -90,7 +92,7 @@ public:
     /**
      * @brief 增加可视次数
      * @detials Visible表示：
-     * \n 1. 该MapPoint在某些帧的视野范围内，通过Frame::isInFrustum()函数判断
+     * \n 1. 该MapPoint在某些帧的视野范围内，通过Frame::IsInFrustum()函数判断
      * \n 2. 该MapPoint被这些帧观测到，但并不一定能和这些帧的特征点匹配上
      * \n   例如：有一个MapPoint（记为M），在某一帧F的视野范围内，
      *    但并不表明该点M可以和F这一帧的某个特征点能匹配上

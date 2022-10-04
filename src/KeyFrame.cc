@@ -312,12 +312,12 @@ int KeyFrame::TrackedMapLines(const int &minObs) {
     unique_lock<mutex> lock(mMutexFeatures);
     int nLines = 0;
     const bool bCheckObs = minObs > 0;
-    for(int i=0; i<NL; i++) {
+    for(int i = 0; i < NL; i++) {
         MapLine* pML = mvpMapLines[i];
         if(pML) {
             if(!pML->isBad()) {
                 if(bCheckObs) {
-                    if(pML->Observations()>=minObs)
+                    if(pML->Observations() >= minObs)
                         nLines++;
                 } else
                     nLines++;

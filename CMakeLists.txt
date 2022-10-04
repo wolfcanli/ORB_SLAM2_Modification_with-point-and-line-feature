@@ -9,7 +9,7 @@ MESSAGE("Build type: " ${CMAKE_BUILD_TYPE})
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -Wall  -O3 -march=native ")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall   -O3 -march=native")
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
 
 # set C++14 standard
 SET(CMAKE_CXX_STANDARD 14)
@@ -117,6 +117,15 @@ target_link_libraries(rgbd_my ${PROJECT_NAME})
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/Test)
 
-add_executable(line_extractor_test
-        Test/LineExtractorTest.cpp)
-target_link_libraries(line_extractor_test ${PROJECT_NAME})
+#add_executable(LineMatchTest Test/LineMatchTest.cpp)
+#target_link_libraries(LineMatchTest ${PROJECT_NAME})
+
+add_executable(LastFrameProjection
+        Test/LastFrameProjection.cpp)
+target_link_libraries(LastFrameProjection ${PROJECT_NAME})
+
+add_executable(LocalMapProjectionTest Test/LocalMapProjectionTest.cpp)
+target_link_libraries(LocalMapProjectionTest ${PROJECT_NAME})
+
+add_executable(RefKeyFrameProjectionTest Test/RefKeyFrameProjectionTest.cpp)
+target_link_libraries(RefKeyFrameProjectionTest ${PROJECT_NAME})

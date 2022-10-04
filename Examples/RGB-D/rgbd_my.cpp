@@ -78,7 +78,7 @@ int main()
     // Main loop
     cv::Mat imRGB, imD;
     for(int ni = 0; ni < nImages; ni++) {
-//        std::cout << "Current loop id " << ni << std::endl;
+        std::cout << "Current loop id " << ni << std::endl;
 
         // Read image and depthmap from file
         imRGB = cv::imread(string(dataset_dir)+"/"+vstrImageFilenamesRGB[ni],CV_LOAD_IMAGE_UNCHANGED);

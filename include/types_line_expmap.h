@@ -85,7 +85,7 @@ public:
         Eigen::Matrix<double, 3, 3> K_line;
         K_line << fy_,        0.0,       0.0,
                   0.0,        fx_,       0.0,
-                  -fy_ * cx_, fx_ * cy_, fx_ * fy_;
+                  -fy_ * cx_, -fx_ * cy_, fx_ * fy_;
         // 求nc，通过v->estimate();
         // Rnw + t^Rv;
         Eigen::Matrix<double, 3, 3> Rcw = v->estimate().rotation().toRotationMatrix();
@@ -119,7 +119,7 @@ public:
         Eigen::Matrix<double, 3, 3> K_line;
         K_line << fy_,        0.0,       0.0,
                 0.0,        fx_,       0.0,
-                -fy_ * cx_, fx_ * cy_, fx_ * fy_;
+                -fy_ * cx_, -fx_ * cy_, fx_ * fy_;
         // 求投影线段方程
         // 求nc，通过v->estimate();
         // Rnw + t^Rv;

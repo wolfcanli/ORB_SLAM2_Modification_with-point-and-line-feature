@@ -2307,10 +2307,9 @@ int Optimizer::PoseOptimizationWithLines(Frame* pFrame) {
                 nLineInitialCorrespondences++;
                 pFrame->mvbOutlier[i] = false;
 
-                // 这条边直线方程系数
                 Eigen::Vector3d line_obs;
                 line_obs = pFrame->mvKeyLineCoefficient[i];
-                // 这条边
+
                 const KeyLine &kpLineUn = pFrame->mvKeyLinesUn[i];
                 Eigen::Vector4d obs_line(kpLineUn.startPointX,
                                          kpLineUn.startPointY,
@@ -2363,7 +2362,8 @@ int Optimizer::PoseOptimizationWithLines(Frame* pFrame) {
     // 由于每次优化后是对所有的观测进行outlier和inlier判别，因此之前被判别为outlier有可能变成inlier，反之亦然
     // 基于卡方检验计算出的阈值（假设测量有一个像素的偏差）
     const float chi2Mono[4]={5.991,5.991,5.991,5.991};          // 单目
-    const float chi2Stereo[4]={7.815,7.815,7.815, 7.815};       // 双目
+    const float chi2Stereo[4]={7.815,7.815,7.815, 7.815};
+    const float chi2Line[4]={7.815,7.815,7.815, 7.815}; // 双目
     const int its[4]={10,10,10,10};// 四次迭代，每次迭代的次数
 
     // bad 的地图点个数
@@ -2456,7 +2456,7 @@ int Optimizer::PoseOptimizationWithLines(Frame* pFrame) {
             const float chi2_l = e_line->chi2();
 
             //这里只要有一个端点的误差边误差过大，就认为这条线是外点了
-            if(chi2_l > 2 * chi2Stereo[it]) {
+            if(chi2_l > 2 * chi2Line[it]) {
                 pFrame->mvbLineOutlier[idx] = true;
                 e_line->setLevel(1);
                 nLineBad++;

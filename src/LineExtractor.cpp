@@ -20,7 +20,7 @@ void LineExtractor::ExtractLineSegment(const cv::Mat &img,
 //    std::cout << "extract line segments" << std::endl;
     lsd->detect(img, key_lines, scale, num_octaves);
 
-    int nums_lineFeature = 50;
+    int nums_lineFeature = 80;
 //    std::cout << "filter lines" << std::endl;
     if (key_lines.size() > nums_lineFeature) {
         // response是线长度与图像宽高最大值的比值
@@ -50,7 +50,7 @@ void LineExtractor::ExtractLineSegment(const cv::Mat &img,
 //        }
 //    }
 
-    std::cout << "KeyLines.size() == " << key_lines.size() << std::endl;
+//    std::cout << "KeyLines.size() == " << key_lines.size() << std::endl;
 
     // 这次是合并之后的描述子提取
     lbd->compute(img, key_lines, line_descriptor);
